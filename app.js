@@ -632,35 +632,35 @@ function renderWelcomeSetup() {
             
             <div class="input-group" style="text-align:left;">
                 <label>Adınız</label>
-                <input type="text" id="setup-name" placeholder="Örn: Ayşe" value="\${state.user.name || ''}">
+                <input type="text" id="setup-name" placeholder="Örn: Ayşe" value="${state.user.name || ''}">
             </div>
             <div class="input-row-complex" style="text-align:left; margin-bottom:15px;">
                 <div class="input-group" style="margin-bottom:0; flex:1;">
                     <label>Yaş</label>
-                    <input type="number" id="setup-age" placeholder="25" value="\${state.user.age || ''}">
+                    <input type="number" id="setup-age" placeholder="25" value="${state.user.age || ''}">
                 </div>
                 <div class="input-group" style="margin-bottom:0; flex:1;">
                     <label>Boy (cm)</label>
-                    <input type="number" id="setup-height" placeholder="165" value="\${state.user.height || ''}">
+                    <input type="number" id="setup-height" placeholder="165" value="${state.user.height || ''}">
                 </div>
             </div>
             <div class="input-row-complex" style="text-align:left; margin-bottom:15px;">
                 <div class="input-group" style="margin-bottom:0; flex:1;">
                     <label>Kilo (kg)</label>
-                    <input type="number" step="0.1" id="setup-weight" placeholder="65.5" value="\${state.user.weight || ''}">
+                    <input type="number" step="0.1" id="setup-weight" placeholder="65.5" value="${state.user.weight || ''}">
                 </div>
                 <div class="input-group" style="margin-bottom:0; flex:1;">
                     <label>Hedef (kg)</label>
-                    <input type="number" step="0.1" id="setup-target" placeholder="58.0" value="\${state.user.targetWeight || ''}">
+                    <input type="number" step="0.1" id="setup-target" placeholder="58.0" value="${state.user.targetWeight || ''}">
                 </div>
             </div>
             <div class="input-group" style="text-align:left;">
                 <label>Cinsiyet</label>
                 <div class="choice-group">
-                    <button class="choice-btn \${state.user.gender === 'female' ? 'active' : ''}" onclick="window.selectSetupGender('female')" id="setup-btn-female">
+                    <button class="choice-btn ${state.user.gender === 'female' ? 'active' : ''}" onclick="window.selectSetupGender('female')" id="setup-btn-female">
                         <i class="ph ph-gender-female"></i> Kadın
                     </button>
-                    <button class="choice-btn \${state.user.gender === 'male' ? 'active' : ''}" onclick="window.selectSetupGender('male')" id="setup-btn-male">
+                    <button class="choice-btn ${state.user.gender === 'male' ? 'active' : ''}" onclick="window.selectSetupGender('male')" id="setup-btn-male">
                         <i class="ph ph-gender-male"></i> Erkek
                     </button>
                 </div>
@@ -1511,7 +1511,7 @@ window.askAI = async () => {
 
         contents.push({ parts });
 
-        const response = await fetch(\`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=\${apiKey}\`, {
+        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ contents })
@@ -1524,14 +1524,14 @@ window.askAI = async () => {
         responseTextEl.classList.remove('hidden');
 
         if (data.error) {
-            responseTextEl.innerHTML = \`<p style="color:#ef5350"><i class="ph ph-warning-circle"></i> API Hatası: \${data.error.message}</p>\`;
+            responseTextEl.innerHTML = `<p style="color:#ef5350"><i class="ph ph-warning-circle"></i> API Hatası: ${data.error.message}</p>`;
         } else if (data.candidates && data.candidates[0].content.parts[0].text) {
             const aiText = data.candidates[0].content.parts[0].text;
-            const formattedHtml = aiText.replace(/\\*\\*(.*?)\\*\\*/g, '<strong>$1</strong>').replace(/\\n/g, '<br>');
-            responseTextEl.innerHTML = \`<div style="display:flex; gap:10px; align-items:flex-start;">
+            const formattedHtml = aiText.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br>');
+            responseTextEl.innerHTML = `<div style="display:flex; gap:10px; align-items:flex-start;">
                 <i class="ph ph-sparkle" style="color:#ab47bc; font-size:20px; flex-shrink:0;"></i>
-                <div>\${formattedHtml}</div>
-            </div>\`;
+                <div>${formattedHtml}</div>
+            </div>`;
         } else {
             responseTextEl.innerHTML = "Anlaşılamayan bir yanıt alındı.";
         }
@@ -1539,7 +1539,7 @@ window.askAI = async () => {
     } catch (error) {
         document.getElementById('ai-loading').classList.add('hidden');
         document.getElementById('ai-response-text').classList.remove('hidden');
-        document.getElementById('ai-response-text').innerHTML = \`<p style="color:#ef5350"><i class="ph ph-warning-circle"></i> Bağlantı hatası oluştu. Lütfen API anahtarınızı kontrol edin.</p>\`;
+        document.getElementById('ai-response-text').innerHTML = `<p style="color:#ef5350"><i class="ph ph-warning-circle"></i> Bağlantı hatası oluştu. Lütfen API anahtarınızı kontrol edin.</p>`;
     }
 };
 
