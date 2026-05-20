@@ -425,7 +425,7 @@ const storage = {
 // State Management
 const state = {
     currentTab: 'dashboard',
-    user: storage.get('diyet_user', { name: '', age: '', height: '', weight: '', targetWeight: '', gender: 'female', theme: 'theme-default' }),
+    user: storage.get('diyet_user', { name: '', age: '', height: '', weight: '', targetWeight: '', gender: 'female', theme: 'theme-default', geminiApiKey: '' }),
     water: storage.get('diyet_water', { date: new Date().toLocaleDateString(), count: 0 }),
     logs: storage.get('diyet_logs', [])
 };
@@ -1316,6 +1316,17 @@ function renderProfile() {
             </div>
         </div>
 
+        <div class="card">
+            <h2><i class="ph ph-sparkle"></i> Yapay Zeka (Gemini)</h2>
+            <p style="font-size:12px; color:var(--text-light); margin-bottom:12px;">
+                Asistan çalışmazsa <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" style="color:var(--primary-dark)">ücretsiz API anahtarı</a> alıp buraya yapıştırın. Boş bırakırsanız varsayılan anahtar kullanılır.
+            </p>
+            <div class="input-group">
+                <label>Gemini API Anahtarı (isteğe bağlı)</label>
+                <input type="password" id="user-gemini-key" value="${state.user.geminiApiKey || ''}" placeholder="AIza..." autocomplete="off">
+            </div>
+        </div>
+
         <div class="card" style="text-align:center">
             <p style="font-size:14px">Vücut Kitle İndeksi (VKİ)</p>
             <h1 style="color:var(--primary-dark); margin:10px 0">${calculateBMI()}</h1>
@@ -1349,6 +1360,7 @@ function saveProfile() {
     state.user.height = document.getElementById('user-height').value;
     state.user.weight = document.getElementById('user-weight').value;
     state.user.targetWeight = document.getElementById('user-target').value;
+    state.user.geminiApiKey = document.getElementById('user-gemini-key').value.trim();
     
     storage.set('diyet_user', state.user);
     updateAppMainTitle();
@@ -1465,14 +1477,15 @@ window.clearAIImage = () => {
     document.getElementById('ai-image-upload').value = '';
 };
 
-// Kendi Gemini API Anahtarınızı Buraya Yapıştırın
-const DEFAULT_GEMINI_API_KEY = "AIzaSyARJKfKBgOP8OsxzcKDGXZdFr-sULBgn6E"; 
+// Gemini API — Profil'den kendi anahtarınızı da girebilirsiniz
+const DEFAULT_GEMINI_API_KEY = "AIzaSyARJKfKBgOP8OsxzcKDGXZdFr-sULBgn6E";
+const GEMINI_MODEL = "gemini-2.5-flash-lite";
 
 window.askAI = async () => {
-    const apiKey = DEFAULT_GEMINI_API_KEY || state.user.geminiApiKey;
+    const apiKey = (state.user.geminiApiKey || "").trim() || DEFAULT_GEMINI_API_KEY;
     
     if (!apiKey) {
-        alert('Lütfen app.js dosyasındaki DEFAULT_GEMINI_API_KEY değişkenine API anahtarınızı yapıştırın.');
+        alert('Lütfen Profil sekmesinden Gemini API anahtarınızı girin veya app.js içindeki DEFAULT_GEMINI_API_KEY alanını doldurun.');
         return;
     }
 
@@ -1489,7 +1502,6 @@ window.askAI = async () => {
     document.getElementById('ai-response-text').classList.add('hidden');
     
     try {
-        const contents = [];
         let prompt = "Sen uzman bir diyetisyen yapay zekasısın. Lütfen bana bu yiyeceğin/içeceğin ne olduğunu, tahmini kalorisini ve diyete uygun olup olmadığını kısaca, samimi ve Türkçe bir şekilde anlat. (Max 3-4 cümle)";
         
         if (text) {
@@ -1509,13 +1521,14 @@ window.askAI = async () => {
             });
         }
 
-        contents.push({ parts });
-
-        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ contents })
-        });
+        const response = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`,
+            {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ contents: [{ parts }] })
+            }
+        );
 
         const data = await response.json();
         
@@ -1523,9 +1536,18 @@ window.askAI = async () => {
         const responseTextEl = document.getElementById('ai-response-text');
         responseTextEl.classList.remove('hidden');
 
-        if (data.error) {
-            responseTextEl.innerHTML = `<p style="color:#ef5350"><i class="ph ph-warning-circle"></i> API Hatası: ${data.error.message}</p>`;
-        } else if (data.candidates && data.candidates[0].content.parts[0].text) {
+        if (!response.ok || data.error) {
+            const msg = data.error?.message || `HTTP ${response.status}`;
+            let hint = "";
+            if (msg.includes("not found") || msg.includes("NOT_FOUND")) {
+                hint = " Model adı güncel değil; uygulamayı yenileyin.";
+            } else if (msg.includes("quota") || msg.includes("Quota") || response.status === 429) {
+                hint = " Günlük ücretsiz kota dolmuş olabilir. Bir süre sonra tekrar deneyin veya Profil'den kendi API anahtarınızı girin.";
+            } else if (msg.includes("API key") || response.status === 403) {
+                hint = " Profil'den geçerli bir Gemini API anahtarı girin (aistudio.google.com/apikey).";
+            }
+            responseTextEl.innerHTML = `<p style="color:#ef5350"><i class="ph ph-warning-circle"></i> API Hatası: ${msg}${hint}</p>`;
+        } else if (data.candidates?.[0]?.content?.parts?.[0]?.text) {
             const aiText = data.candidates[0].content.parts[0].text;
             const formattedHtml = aiText.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br>');
             responseTextEl.innerHTML = `<div style="display:flex; gap:10px; align-items:flex-start;">
