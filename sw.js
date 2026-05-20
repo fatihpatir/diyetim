@@ -1,11 +1,11 @@
-const CACHE_NAME = 'diyet-v3';
+const CACHE_NAME = 'diyet-v4';
 const ASSETS = [
-    '/',
-    '/index.html',
-    '/style.css',
-    '/app.js',
-    '/manifest.json',
-    '/icon.png',
+    './',
+    './index.html',
+    './style.css',
+    './app.js',
+    './manifest.json',
+    './icon.png',
     'https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&display=swap',
     'https://unpkg.com/@phosphor-icons/web'
 ];
