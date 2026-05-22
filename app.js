@@ -482,7 +482,7 @@ const isStandalone = window.matchMedia('(display-mode: standalone)').matches || 
 
 function init() {
     // Versiyon Kontrolü (Zorunlu Güncelleme)
-    const CURRENT_VERSION = "2.0";
+    const CURRENT_VERSION = "2.1";
     if (storage.get('app_version') !== CURRENT_VERSION) {
         storage.set('app_version', CURRENT_VERSION);
         if ('serviceWorker' in navigator) {
