@@ -474,6 +474,19 @@ const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
 const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
 
 function init() {
+    // Versiyon Kontrolü (Zorunlu Güncelleme)
+    const CURRENT_VERSION = "1.5";
+    if (storage.get('app_version') !== CURRENT_VERSION) {
+        storage.set('app_version', CURRENT_VERSION);
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.getRegistrations().then(regs => {
+                regs.forEach(reg => reg.update());
+            });
+        }
+        window.location.reload(true);
+        return;
+    }
+
     if (!mainContent) return;
     updateDateDisplay();
     updateAppMainTitle();
@@ -556,16 +569,11 @@ function showIOSInstallGuide() {
 function showInfo() {
     modalBody.innerHTML = `
         <h2>Hakkında</h2>
-        <p>Bu uygulama, Uzm. Dyt. Elif Gizem Yılmaz'ın Aralıklı Oruç ve Detoks programı esas alınarak hazırlanmıştır.</p>
-        
         <div style="text-align:left; background:var(--bg-color); padding:15px; border-radius:15px; margin-top:15px">
             <strong style="display:block; margin-bottom:10px; color:var(--primary-dark)">📌 Günlük Kurallar:</strong>
-            <ul style="font-size:13px; color:var(--text-color); padding-left:20px">
-                <li>Akşam yemeğinden sonra kesinlikle bir şey yenmemelidir.</li>
-                <li>Günde en az 3 litre su içilmelidir.</li>
-                <li>Kahve günde max 2 fincan (sade) olmalıdır.</li>
-                <li>Bitki çayları (rezene, melisa, papatya) serbesttir.</li>
-                <li>Her gün 1 adet sade maden suyu içilebilir.</li>
+            <ul style="font-size:13px; color:var(--text-color); padding-left:20px; margin-bottom:0">
+                <li>Günde 3 - 3.5 litre su içelim.</li>
+                <li>Abartmadan 0 kalorili içecekler içilebilir.</li>
             </ul>
         </div>
         <p style="font-weight:600; color:var(--primary-dark); margin-top:15px">Sağlıklı günler dileriz!</p>
@@ -1316,17 +1324,6 @@ function renderProfile() {
             </div>
         </div>
 
-        <div class="card">
-            <h2><i class="ph ph-sparkle"></i> Yapay Zeka (Gemini)</h2>
-            <p style="font-size:12px; color:var(--text-light); margin-bottom:12px;">
-                Asistan çalışmazsa <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" style="color:var(--primary-dark)">ücretsiz API anahtarı</a> alıp buraya yapıştırın. Boş bırakırsanız varsayılan anahtar kullanılır.
-            </p>
-            <div class="input-group">
-                <label>Gemini API Anahtarı (isteğe bağlı)</label>
-                <input type="password" id="user-gemini-key" value="${state.user.geminiApiKey || ''}" placeholder="AIza..." autocomplete="off">
-            </div>
-        </div>
-
         <div class="card" style="text-align:center">
             <p style="font-size:14px">Vücut Kitle İndeksi (VKİ)</p>
             <h1 style="color:var(--primary-dark); margin:10px 0">${calculateBMI()}</h1>
@@ -1360,7 +1357,6 @@ function saveProfile() {
     state.user.height = document.getElementById('user-height').value;
     state.user.weight = document.getElementById('user-weight').value;
     state.user.targetWeight = document.getElementById('user-target').value;
-    state.user.geminiApiKey = document.getElementById('user-gemini-key').value.trim();
     
     storage.set('diyet_user', state.user);
     updateAppMainTitle();
@@ -1463,9 +1459,36 @@ window.handleAIImage = (event) => {
     if (file) {
         const reader = new FileReader();
         reader.onload = (e) => {
-            window.currentAIImageBase64 = e.target.result;
-            document.getElementById('ai-image-preview').src = e.target.result;
-            document.getElementById('ai-image-preview-container').classList.remove('hidden');
+            const img = new Image();
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                const MAX_WIDTH = 800;
+                const MAX_HEIGHT = 800;
+                let width = img.width;
+                let height = img.height;
+
+                if (width > height) {
+                    if (width > MAX_WIDTH) {
+                        height *= MAX_WIDTH / width;
+                        width = MAX_WIDTH;
+                    }
+                } else {
+                    if (height > MAX_HEIGHT) {
+                        width *= MAX_HEIGHT / height;
+                        height = MAX_HEIGHT;
+                    }
+                }
+                canvas.width = width;
+                canvas.height = height;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, width, height);
+
+                const compressedBase64 = canvas.toDataURL('image/jpeg', 0.8);
+                window.currentAIImageBase64 = compressedBase64;
+                document.getElementById('ai-image-preview').src = compressedBase64;
+                document.getElementById('ai-image-preview-container').classList.remove('hidden');
+            };
+            img.src = e.target.result;
         };
         reader.readAsDataURL(file);
     }
@@ -1477,15 +1500,15 @@ window.clearAIImage = () => {
     document.getElementById('ai-image-upload').value = '';
 };
 
-// Gemini API — Profil'den kendi anahtarınızı da girebilirsiniz
-const DEFAULT_GEMINI_API_KEY = "AIzaSyARJKfKBgOP8OsxzcKDGXZdFr-sULBgn6E";
-const GEMINI_MODEL = "gemini-2.5-flash-lite";
+// Gemini API
+const DEFAULT_GEMINI_API_KEY = "AIzaSyC0zSXMaqwRJAR6KvB-dQ0O_VYEldayL2A"; // Sen kendi API keyini buraya yazabilirsin.
+const GEMINI_MODEL = "gemini-flash-latest";
 
 window.askAI = async () => {
-    const apiKey = (state.user.geminiApiKey || "").trim() || DEFAULT_GEMINI_API_KEY;
+    const apiKey = DEFAULT_GEMINI_API_KEY;
     
     if (!apiKey) {
-        alert('Lütfen Profil sekmesinden Gemini API anahtarınızı girin veya app.js içindeki DEFAULT_GEMINI_API_KEY alanını doldurun.');
+        alert('Lütfen app.js içindeki DEFAULT_GEMINI_API_KEY alanını doldurun.');
         return;
     }
 
@@ -1542,9 +1565,9 @@ window.askAI = async () => {
             if (msg.includes("not found") || msg.includes("NOT_FOUND")) {
                 hint = " Model adı güncel değil; uygulamayı yenileyin.";
             } else if (msg.includes("quota") || msg.includes("Quota") || response.status === 429) {
-                hint = " Günlük ücretsiz kota dolmuş olabilir. Bir süre sonra tekrar deneyin veya Profil'den kendi API anahtarınızı girin.";
+                hint = " Günlük ücretsiz kota dolmuş olabilir. Bir süre sonra tekrar deneyin.";
             } else if (msg.includes("API key") || response.status === 403) {
-                hint = " Profil'den geçerli bir Gemini API anahtarı girin (aistudio.google.com/apikey).";
+                hint = " Geçerli bir Gemini API anahtarı eklenmemiş. Lütfen sistem yöneticisi ile görüşün.";
             }
             responseTextEl.innerHTML = `<p style="color:#ef5350"><i class="ph ph-warning-circle"></i> API Hatası: ${msg}${hint}</p>`;
         } else if (data.candidates?.[0]?.content?.parts?.[0]?.text) {
