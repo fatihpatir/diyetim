@@ -427,8 +427,15 @@ const state = {
     currentTab: 'dashboard',
     user: storage.get('diyet_user', { name: '', age: '', height: '', weight: '', targetWeight: '', gender: 'female', theme: 'theme-default', geminiApiKey: '' }),
     water: storage.get('diyet_water', { date: new Date().toLocaleDateString(), count: 0 }),
-    logs: storage.get('diyet_logs', [])
+    logs: storage.get('diyet_logs', []),
+    daily: storage.get('diyet_daily', { date: new Date().toLocaleDateString(), intake: [], steps: 0 })
 };
+
+// Reset daily if it's a new day
+if (state.daily.date !== new Date().toLocaleDateString()) {
+    state.daily = { date: new Date().toLocaleDateString(), intake: [], steps: 0 };
+    storage.set('diyet_daily', state.daily);
+}
 
 // Apply theme on load
 function applyTheme(themeName) {
@@ -475,7 +482,7 @@ const isStandalone = window.matchMedia('(display-mode: standalone)').matches || 
 
 function init() {
     // Versiyon Kontrolü (Zorunlu Güncelleme)
-    const CURRENT_VERSION = "1.5";
+    const CURRENT_VERSION = "2.0";
     if (storage.get('app_version') !== CURRENT_VERSION) {
         storage.set('app_version', CURRENT_VERSION);
         if ('serviceWorker' in navigator) {
@@ -574,6 +581,7 @@ function showInfo() {
             <ul style="font-size:13px; color:var(--text-color); padding-left:20px; margin-bottom:0">
                 <li>Günde 3 - 3.5 litre su içelim.</li>
                 <li>Abartmadan 0 kalorili içecekler içilebilir.</li>
+                <li>Günde minimum 30 dk spor ya da yürüyüş yapmanız faydalı olacaktır.</li>
             </ul>
         </div>
         <p style="font-weight:600; color:var(--primary-dark); margin-top:15px">Sağlıklı günler dileriz!</p>
@@ -901,9 +909,83 @@ function renderDashboard() {
     const randomQuote = quotes[Math.floor(Math.random() * quotes.length)];
     const remaining = Math.max(0, 3.5 - (state.water.count / 1000)).toFixed(1);
 
+    // Calorie Calculations
+    const bmr = calculateBMR();
+    const stepCal = state.daily.steps * 0.04; // 1 step approx 0.04 cal
+    const totalBurned = Math.round(bmr + stepCal);
+    const totalIntake = state.daily.intake.reduce((sum, item) => sum + item.kcal, 0);
+    const netBalance = totalBurned - totalIntake;
+    const estimatedLoss = (netBalance / 7700 * 1000).toFixed(0); // 7700 cal ≈ 1kg loss
+
     const dashboardHTML = `
         <div class="dashboard-top-section">
-            <div class="card water-card-horizontal">
+            <div class="card status-summary-card" style="background: linear-gradient(135deg, var(--primary-color), var(--primary-dark)); color: white; padding: 20px; border: none;">
+                <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:15px">
+                    <div>
+                        <span style="font-size:12px; opacity:0.9">Bugünkü Net Durum</span>
+                        <h2 style="margin:0; font-size:24px; color:white">${netBalance > 0 ? '+' : ''}${netBalance} kcal</h2>
+                    </div>
+                    <div style="text-align:right">
+                        <i class="ph ph-fire-simple" style="font-size:32px; opacity:0.8"></i>
+                    </div>
+                </div>
+                
+                <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:10px; background: rgba(255,255,255,0.1); padding:12px; border-radius:12px">
+                    <div style="text-align:center">
+                        <div style="font-size:10px; opacity:0.8">Yanan</div>
+                        <div style="font-weight:600">${totalBurned}</div>
+                    </div>
+                    <div style="text-align:center; border-left: 1px solid rgba(255,255,255,0.2); border-right: 1px solid rgba(255,255,255,0.2)">
+                        <div style="font-size:10px; opacity:0.8">Alınan</div>
+                        <div style="font-weight:600">${totalIntake}</div>
+                    </div>
+                    <div style="text-align:center">
+                        <div style="font-size:10px; opacity:0.8">Tahmini Kayıp</div>
+                        <div style="font-weight:600">${estimatedLoss > 0 ? estimatedLoss : 0}g</div>
+                    </div>
+                </div>
+
+                <div style="margin-top:15px; font-size:12px; text-align:center; background:rgba(0,0,0,0.1); padding:8px; border-radius:8px">
+                    ${netBalance > 500 ? "🔥 Müthiş gidiyorsun, yağ yakımı başladı!" : "🥗 Dengeli beslenmeye devam, su içmeyi unutma!"}
+                </div>
+            </div>
+
+            <div id="daily-intake-list" style="margin-top:12px; display: ${state.daily.intake.length > 0 ? 'block' : 'none'}">
+                <div class="card" style="padding:15px">
+                    <h3 style="font-size:14px; margin-bottom:10px; color:var(--text-color); display:flex; align-items:center; gap:8px">
+                        <i class="ph ph-list-checks" style="color:var(--primary-dark)"></i> Bugün Yenilenler
+                    </h3>
+                    <div style="display:flex; flex-direction:column; gap:8px">
+                        ${state.daily.intake.map((item, idx) => `
+                            <div style="display:flex; justify-content:space-between; align-items:center; background:rgba(0,0,0,0.02); padding:8px 12px; border-radius:8px; font-size:13px">
+                                <div>
+                                    <span style="font-weight:600">${item.label}</span>
+                                    <span style="font-size:10px; color:var(--text-light); margin-left:5px">${item.time}</span>
+                                </div>
+                                <div style="display:flex; align-items:center; gap:10px">
+                                    <span style="color:var(--primary-dark); font-weight:600">${item.kcal} kcal</span>
+                                    <i class="ph ph-trash" style="color:#ef5350; cursor:pointer" onclick="window.removeIntake(${idx})"></i>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            </div>
+
+            <div class="card" style="padding:15px; margin-top:12px">
+                <div style="display:flex; align-items:center; justify-content:space-between">
+                    <div style="display:flex; align-items:center; gap:10px">
+                        <div class="item-icon-circle" style="background:#fff3e0; color:#ff9800; width:35px; height:35px"><i class="ph ph-steps"></i></div>
+                        <div>
+                            <div style="font-size:11px; color:var(--text-light)">Bugünkü Adım</div>
+                            <div style="font-weight:600; font-size:16px">${state.daily.steps}</div>
+                        </div>
+                    </div>
+                    <button class="btn-primary-small" onclick="window.promptSteps()" style="background:#ff9800; border:none; padding:8px 15px">Güncelle</button>
+                </div>
+            </div>
+
+            <div class="card water-card-horizontal" style="margin-top:12px">
                 <div class="horizontal-bar-container">
                     <div class="bar-fill-horizontal" style="width: ${waterPercent}%"></div>
                     <div class="bar-info-overlay">
@@ -1399,6 +1481,42 @@ function calculateBMI() {
     return (state.user.weight / (heightInMeters * heightInMeters)).toFixed(1);
 }
 
+function calculateBMR() {
+    if (!state.user.height || !state.user.weight || !state.user.age) return 1500;
+    const w = parseFloat(state.user.weight);
+    const h = parseFloat(state.user.height);
+    const a = parseFloat(state.user.age);
+    if (state.user.gender === 'male') {
+        return Math.round(10 * w + 6.25 * h - 5 * a + 5);
+    } else {
+        return Math.round(10 * w + 6.25 * h - 5 * a - 161);
+    }
+}
+
+window.promptSteps = () => {
+    const steps = prompt("Bugün kaç adım attınız?", state.daily.steps);
+    if (steps !== null && !isNaN(steps)) {
+        state.daily.steps = parseInt(steps);
+        storage.set('diyet_daily', state.daily);
+        renderTab('dashboard');
+    }
+};
+
+window.addToDailyIntake = (kcal, label) => {
+    state.daily.intake.push({ kcal: parseInt(kcal), label: label, time: new Date().toLocaleTimeString('tr-TR', {hour:'2-digit', minute:'2-digit'}) });
+    storage.set('diyet_daily', state.daily);
+    alert(`${label} (${kcal} kcal) günlüğe eklendi!`);
+    renderTab('dashboard');
+};
+
+window.removeIntake = (idx) => {
+    if (confirm("Bu öğünü silmek istediğinize emin misiniz?")) {
+        state.daily.intake.splice(idx, 1);
+        storage.set('diyet_daily', state.daily);
+        renderTab('dashboard');
+    }
+};
+
 function getBMICategory() {
     const bmi = calculateBMI();
     if (bmi === '--') return 'Bilgi eksik';
@@ -1500,15 +1618,16 @@ window.clearAIImage = () => {
     document.getElementById('ai-image-upload').value = '';
 };
 
-// Gemini API
-const DEFAULT_GEMINI_API_KEY = "AIzaSyC0zSXMaqwRJAR6KvB-dQ0O_VYEldayL2A"; // Sen kendi API keyini buraya yazabilirsin.
-const GEMINI_MODEL = "gemini-flash-latest";
+// Groq API
+const DEFAULT_GROQ_API_KEY = "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";
+const GROQ_VISION_MODEL = "llama-3.2-11b-vision-preview";
+const GROQ_TEXT_MODEL = "llama-3.3-70b-versatile";
 
 window.askAI = async () => {
-    const apiKey = DEFAULT_GEMINI_API_KEY;
+    const apiKey = DEFAULT_GROQ_API_KEY;
     
-    if (!apiKey) {
-        alert('Lütfen app.js içindeki DEFAULT_GEMINI_API_KEY alanını doldurun.');
+    if (!apiKey || apiKey.includes("YAPISTIR")) {
+        alert('Lütfen geçerli bir Groq API anahtarı ekleyin.');
         return;
     }
 
@@ -1525,33 +1644,38 @@ window.askAI = async () => {
     document.getElementById('ai-response-text').classList.add('hidden');
     
     try {
-        let prompt = "Sen uzman bir diyetisyen yapay zekasısın. Lütfen bana bu yiyeceğin/içeceğin ne olduğunu, tahmini kalorisini ve diyete uygun olup olmadığını kısaca, samimi ve Türkçe bir şekilde anlat. (Max 3-4 cümle)";
+        let systemPrompt = "Sen uzman bir diyetisyen yapay zekasısın. Görevin, kullanıcının yediği yemeği/içeceği analiz etmek. Eğer bir fotoğraf varsa onu tanı, yoksa metne odaklan. Tahmini kalorisini söyle ve diyete uygun olup olmadığını kısaca, samimi ve Türkçe bir şekilde anlat. (Maksimum 3-4 cümle)";
         
+        // Groq Chat Completion Format
+        let userContent = [];
         if (text) {
-            prompt += " Kullanıcının notu: " + text;
+            userContent.push({ type: "text", text: `Kullanıcının notu: ${text}` });
         }
-
-        const parts = [{ text: prompt }];
-
         if (imageBase64) {
-            const base64Data = imageBase64.split(',')[1];
-            const mimeType = imageBase64.substring(imageBase64.indexOf(':') + 1, imageBase64.indexOf(';'));
-            parts.push({
-                inline_data: {
-                    mime_type: mimeType || 'image/jpeg',
-                    data: base64Data
-                }
+            userContent.push({
+                type: "image_url",
+                image_url: { url: imageBase64 }
             });
         }
 
-        const response = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`,
-            {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ contents: [{ parts }] })
-            }
-        );
+        const model = imageBase64 ? GROQ_VISION_MODEL : GROQ_TEXT_MODEL;
+
+        const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+            method: "POST",
+            headers: {
+                "Authorization": `Bearer ${apiKey}`,
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                model: model,
+                messages: [
+                    { role: "system", content: systemPrompt },
+                    { role: "user", content: userContent }
+                ],
+                temperature: 0.7,
+                max_tokens: 512
+            })
+        });
 
         const data = await response.json();
         
@@ -1561,30 +1685,36 @@ window.askAI = async () => {
 
         if (!response.ok || data.error) {
             const msg = data.error?.message || `HTTP ${response.status}`;
-            let hint = "";
-            if (msg.includes("not found") || msg.includes("NOT_FOUND")) {
-                hint = " Model adı güncel değil; uygulamayı yenileyin.";
-            } else if (msg.includes("quota") || msg.includes("Quota") || response.status === 429) {
-                hint = " Günlük ücretsiz kota dolmuş olabilir. Bir süre sonra tekrar deneyin.";
-            } else if (msg.includes("API key") || response.status === 403) {
-                hint = " Geçerli bir Gemini API anahtarı eklenmemiş. Lütfen sistem yöneticisi ile görüşün.";
-            }
-            responseTextEl.innerHTML = `<p style="color:#ef5350"><i class="ph ph-warning-circle"></i> API Hatası: ${msg}${hint}</p>`;
-        } else if (data.candidates?.[0]?.content?.parts?.[0]?.text) {
-            const aiText = data.candidates[0].content.parts[0].text;
+            responseTextEl.innerHTML = `<p style="color:#ef5350"><i class="ph ph-warning-circle"></i> API Hatası: ${msg}</p>`;
+        } else if (data.choices?.[0]?.message?.content) {
+            const aiText = data.choices[0].message.content;
             const formattedHtml = aiText.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br>');
-            responseTextEl.innerHTML = `<div style="display:flex; gap:10px; align-items:flex-start;">
-                <i class="ph ph-sparkle" style="color:#ab47bc; font-size:20px; flex-shrink:0;"></i>
-                <div>${formattedHtml}</div>
-            </div>`;
+            
+            // Try to extract calorie from AI text
+            const kcalMatch = aiText.match(/(\d+)\s*kcal/i) || aiText.match(/(\d+)\s*kalori/i);
+            const kcal = kcalMatch ? kcalMatch[1] : 200;
+            const foodName = text || "Öğün";
+
+            responseTextEl.innerHTML = `
+                <div style="display:flex; gap:10px; align-items:flex-start;">
+                    <i class="ph ph-sparkle" style="color:#ab47bc; font-size:20px; flex-shrink:0;"></i>
+                    <div>
+                        ${formattedHtml}
+                        <div style="margin-top:15px; border-top:1px solid rgba(0,0,0,0.05); padding-top:10px">
+                            <button class="btn-primary-small" onclick="window.addToDailyIntake('${kcal}', '${foodName}')" style="background:#ab47bc; border:none; width:100%; justify-content:center">
+                                <i class="ph ph-plus-circle"></i> Bugünün Listesine Ekle (${kcal} kcal)
+                            </button>
+                        </div>
+                    </div>
+                </div>`;
         } else {
-            responseTextEl.innerHTML = "Anlaşılamayan bir yanıt alındı.";
+            responseTextEl.innerHTML = "Yanıt alınamadı.";
         }
 
     } catch (error) {
         document.getElementById('ai-loading').classList.add('hidden');
         document.getElementById('ai-response-text').classList.remove('hidden');
-        document.getElementById('ai-response-text').innerHTML = `<p style="color:#ef5350"><i class="ph ph-warning-circle"></i> Bağlantı hatası oluştu. Lütfen API anahtarınızı kontrol edin.</p>`;
+        document.getElementById('ai-response-text').innerHTML = `<p style="color:#ef5350"><i class="ph ph-warning-circle"></i> Bağlantı hatası! Lütfen internetinizi veya konsolu kontrol edin.</p>`;
     }
 };
 
