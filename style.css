@@ -38,6 +38,7 @@ body.theme-luxury {
     --primary-color: #c5a059; /* Brushed Gold */
     --primary-dark: #a38447;
     --secondary-color: #1c2024;
+    --accent-color: #2c3e50; /* Deep blue/charcoal for accent in dark mode */
     --text-color: #ecf0f1; /* High Contrast White/Gray */
     --text-light: #bdc3c7;
     --white: #1a1e21;

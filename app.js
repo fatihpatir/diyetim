@@ -1705,7 +1705,7 @@ window.clearAIImage = () => {
 
 // Groq API
 const DEFAULT_GROQ_API_KEY = "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";
-const GROQ_VISION_MODEL = "llama-3.2-11b-vision-preview";
+const GROQ_VISION_MODEL = "llama-3.2-90b-vision-preview"; // 11b kaldırıldıysa 90b en güncel alternatiftir
 const GROQ_TEXT_MODEL = "llama-3.3-70b-versatile";
 
 window.askAI = async () => {
@@ -1733,18 +1733,18 @@ window.askAI = async () => {
         
         const model = imageBase64 ? GROQ_VISION_MODEL : GROQ_TEXT_MODEL;
 
-        // Simplify for Vision compatibility
         let messages = [];
         if (imageBase64) {
-            // Vision models sometimes prefer instructions within the user message
+            // Groq Vision handles array of content (text + image) best in the user role
             messages.push({
                 role: "user",
                 content: [
-                    { type: "text", text: systemPrompt + (text ? "\nKullanıcı notu: " + text : "") },
+                    { type: "text", text: systemPrompt + (text ? "\nKullanıcı notu: " + text : "\nLütfen bu fotoğrafı analiz et.") },
                     { type: "image_url", image_url: { url: imageBase64 } }
                 ]
             });
         } else {
+            // Standard text-only chat
             messages.push({ role: "system", content: systemPrompt });
             messages.push({ role: "user", content: text });
         }
@@ -1759,7 +1759,8 @@ window.askAI = async () => {
                 model: model,
                 messages: messages,
                 temperature: 0.5,
-                max_tokens: 512
+                max_tokens: 512,
+                top_p: 1
             })
         });
 
@@ -1771,7 +1772,8 @@ window.askAI = async () => {
 
         if (!response.ok || data.error) {
             const msg = data.error?.message || `HTTP ${response.status}`;
-            responseTextEl.innerHTML = `<p style="color:#ef5350"><i class="ph ph-warning-circle"></i> API Hatası: ${msg}</p>`;
+            const errorCode = data.error?.code || "";
+            responseTextEl.innerHTML = `<p style="color:#ef5350"><i class="ph ph-warning-circle"></i> API Hatası: ${msg} (${errorCode})</p>`;
         } else if (data.choices?.[0]?.message?.content) {
             const aiText = data.choices[0].message.content;
             const formattedHtml = aiText.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br>');
@@ -1779,28 +1781,28 @@ window.askAI = async () => {
             // Try to extract calorie from AI text
             const kcalMatch = aiText.match(/(\d+)\s*kcal/i) || aiText.match(/(\d+)\s*kalori/i);
             const kcal = kcalMatch ? kcalMatch[1] : 200;
-            const foodName = text || "Öğün";
+            const foodName = text ? (text.length > 20 ? text.substring(0,20)+"..." : text) : "AI Analizi";
 
             responseTextEl.innerHTML = `
                 <div style="display:flex; gap:10px; align-items:flex-start;">
                     <i class="ph ph-sparkle" style="color:#ab47bc; font-size:20px; flex-shrink:0;"></i>
-                    <div>
+                    <div style="width:100%">
                         ${formattedHtml}
                         <div style="margin-top:15px; border-top:1px solid rgba(0,0,0,0.05); padding-top:10px">
-                            <button class="btn-primary-small" onclick="window.addToDailyIntake('${kcal}', '${foodName}')" style="background:#ab47bc; border:none; width:100%; justify-content:center">
-                                <i class="ph ph-plus-circle"></i> Bugünün Listesine Ekle (${kcal} kcal)
+                            <button class="btn-primary-small" onclick="window.addToDailyIntake('${kcal}', '${foodName}')" style="background:#ab47bc; border:none; width:100%; justify-content:center; color:white">
+                                <i class="ph ph-plus-circle"></i> Günlüğüme Ekle (${kcal} kcal)
                             </button>
                         </div>
                     </div>
                 </div>`;
         } else {
-            responseTextEl.innerHTML = "Yanıt alınamadı.";
+            responseTextEl.innerHTML = "Maalesef geçerli bir cevap oluşturulamadı.";
         }
 
     } catch (error) {
         document.getElementById('ai-loading').classList.add('hidden');
         document.getElementById('ai-response-text').classList.remove('hidden');
-        document.getElementById('ai-response-text').innerHTML = `<p style="color:#ef5350"><i class="ph ph-warning-circle"></i> Bağlantı hatası! Lütfen internetinizi veya konsolu kontrol edin.</p>`;
+        document.getElementById('ai-response-text').innerHTML = `<p style="color:#ef5350"><i class="ph ph-warning-circle"></i> Gönderim sırasında bir hata oluştu. (${error.message})</p>`;
     }
 };
 
