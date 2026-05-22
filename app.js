@@ -950,6 +950,27 @@ function renderDashboard() {
                 </div>
             </div>
 
+            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-top:12px">
+                <div class="card" style="padding:15px; margin-top:0">
+                    <div style="display:flex; align-items:center; justify-content:space-between">
+                        <div style="display:flex; align-items:center; gap:8px">
+                            <div class="item-icon-circle" style="background:#fff3e0; color:#ff9800; width:30px; height:30px; font-size:12px"><i class="ph ph-steps"></i></div>
+                            <div style="font-weight:600; font-size:14px">${state.daily.steps}</div>
+                        </div>
+                        <button class="btn-primary-small" onclick="window.promptSteps()" style="background:#ff9800; border:none; padding:4px 8px; font-size:10px">Yaz</button>
+                    </div>
+                </div>
+                <div class="card" style="padding:15px; margin-top:0">
+                    <div style="display:flex; align-items:center; justify-content:space-between">
+                        <div style="display:flex; align-items:center; gap:8px">
+                            <div class="item-icon-circle" style="background:#e8f5e9; color:#4caf50; width:30px; height:30px; font-size:12px"><i class="ph ph-plus"></i></div>
+                            <div style="font-weight:600; font-size:14px">Öğün</div>
+                        </div>
+                        <button class="btn-primary-small" onclick="window.promptManualIntake()" style="background:#4caf50; border:none; padding:4px 8px; font-size:10px">Ekle</button>
+                    </div>
+                </div>
+            </div>
+
             <div id="daily-intake-list" style="margin-top:12px; display: ${state.daily.intake.length > 0 ? 'block' : 'none'}">
                 <div class="card" style="padding:15px">
                     <h3 style="font-size:14px; margin-bottom:10px; color:var(--text-color); display:flex; align-items:center; gap:8px">
@@ -1412,7 +1433,20 @@ function renderProfile() {
             <p style="font-size:12px; color:var(--text-light)">${getBMICategory()}</p>
         </div>
         
-        <button class="btn-primary" id="save-profile" style="margin-bottom: 20px;">Değişiklikleri Kaydet</button>
+        <button class="btn-primary" id="save-profile" style="margin-bottom: 12px;">Değişiklikleri Kaydet</button>
+        
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin-bottom:12px">
+            <button class="btn-primary-small" onclick="window.backupData()" style="background:var(--secondary-color); color:var(--text-color); border:none; padding:12px; width:100%; border-radius:12px">
+                <i class="ph ph-export"></i> Yedekle
+            </button>
+            <button class="btn-primary-small" onclick="window.restoreData()" style="background:var(--secondary-color); color:var(--text-color); border:none; padding:12px; width:100%; border-radius:12px">
+                <i class="ph ph-import"></i> Geri Yükle
+            </button>
+        </div>
+
+        <button class="btn-primary" onclick="window.resetEverything()" style="background:#ef5350; border-color:#ef5350; margin-bottom: 20px;">
+            <i class="ph ph-trash"></i> Tüm Verileri Sıfırla
+        </button>
         
         <div class="developer-credit-profile">
             <a href="https://fatihpatir.github.io/web" target="_blank">
@@ -1495,10 +1529,19 @@ function calculateBMR() {
 
 window.promptSteps = () => {
     const steps = prompt("Bugün kaç adım attınız?", state.daily.steps);
-    if (steps !== null && !isNaN(steps)) {
+    if (steps !== null && steps !== "" && !isNaN(steps)) {
         state.daily.steps = parseInt(steps);
         storage.set('diyet_daily', state.daily);
         renderTab('dashboard');
+    }
+};
+
+window.promptManualIntake = () => {
+    const label = prompt("Ne yediniz? (Örn: Simit)", "");
+    if (!label) return;
+    const kcal = prompt("Kaç kalori? (Sadece sayı girin veya boş bırakın)", "200");
+    if (kcal !== null) {
+        window.addToDailyIntake(kcal || 200, label);
     }
 };
 
@@ -1514,6 +1557,48 @@ window.removeIntake = (idx) => {
         state.daily.intake.splice(idx, 1);
         storage.set('diyet_daily', state.daily);
         renderTab('dashboard');
+    }
+};
+
+window.resetEverything = () => {
+    if (confirm("DİKKAT! Tüm bilgileriniz, kilo kayıtlarınız ve ayarlarınız tamamen silinecek. Bu işlem geri alınamaz. Onaylıyor musunuz?")) {
+        localStorage.clear();
+        alert("Tüm veriler silindi. Uygulama yeniden başlatılıyor...");
+        window.location.reload();
+    }
+};
+
+window.backupData = () => {
+    const allData = {
+        user: state.user,
+        logs: state.logs,
+        water: state.water,
+        daily: state.daily,
+        appVersion: storage.get('app_version')
+    };
+    const code = btoa(JSON.stringify(allData)); // Encode to base64
+    navigator.clipboard.writeText(code).then(() => {
+        alert("Yedekleme kodunuz başarıyla kopyalandı! Bu kodu bir yere not edin (WhatsApp, Notlar vb.). Verilerinizi geri getirmek için kullanabilirsiniz.");
+    });
+};
+
+window.restoreData = () => {
+    const code = prompt("Lütfen daha önce kopyaladığınız yedekleme kodunu buraya yapıştırın:");
+    if (!code) return;
+    try {
+        const decoded = JSON.parse(atob(code));
+        if (decoded.user && decoded.logs) {
+            storage.set('diyet_user', decoded.user);
+            storage.set('diyet_logs', decoded.logs);
+            storage.set('diyet_water', decoded.water);
+            storage.set('diyet_daily', decoded.daily);
+            alert("Harika! Verileriniz başarıyla geri yüklendi. Uygulama güncelleniyor...");
+            window.location.reload();
+        } else {
+            alert("Hatalı yedekleme kodu!");
+        }
+    } catch (e) {
+        alert("Kod geçersiz! Lütfen doğru kodu yapıştırdığınızdan emin olun.");
     }
 };
 
@@ -1580,8 +1665,8 @@ window.handleAIImage = (event) => {
             const img = new Image();
             img.onload = () => {
                 const canvas = document.createElement('canvas');
-                const MAX_WIDTH = 800;
-                const MAX_HEIGHT = 800;
+                const MAX_WIDTH = 600;
+                const MAX_HEIGHT = 600;
                 let width = img.width;
                 let height = img.height;
 
@@ -1601,7 +1686,7 @@ window.handleAIImage = (event) => {
                 const ctx = canvas.getContext('2d');
                 ctx.drawImage(img, 0, 0, width, height);
 
-                const compressedBase64 = canvas.toDataURL('image/jpeg', 0.8);
+                const compressedBase64 = canvas.toDataURL('image/jpeg', 0.5); // More aggressive compression for high-res mobile photos
                 window.currentAIImageBase64 = compressedBase64;
                 document.getElementById('ai-image-preview').src = compressedBase64;
                 document.getElementById('ai-image-preview-container').classList.remove('hidden');
@@ -1646,19 +1731,23 @@ window.askAI = async () => {
     try {
         let systemPrompt = "Sen uzman bir diyetisyen yapay zekasısın. Görevin, kullanıcının yediği yemeği/içeceği analiz etmek. Eğer bir fotoğraf varsa onu tanı, yoksa metne odaklan. Tahmini kalorisini söyle ve diyete uygun olup olmadığını kısaca, samimi ve Türkçe bir şekilde anlat. (Maksimum 3-4 cümle)";
         
-        // Groq Chat Completion Format
-        let userContent = [];
-        if (text) {
-            userContent.push({ type: "text", text: `Kullanıcının notu: ${text}` });
-        }
-        if (imageBase64) {
-            userContent.push({
-                type: "image_url",
-                image_url: { url: imageBase64 }
-            });
-        }
-
         const model = imageBase64 ? GROQ_VISION_MODEL : GROQ_TEXT_MODEL;
+
+        // Simplify for Vision compatibility
+        let messages = [];
+        if (imageBase64) {
+            // Vision models sometimes prefer instructions within the user message
+            messages.push({
+                role: "user",
+                content: [
+                    { type: "text", text: systemPrompt + (text ? "\nKullanıcı notu: " + text : "") },
+                    { type: "image_url", image_url: { url: imageBase64 } }
+                ]
+            });
+        } else {
+            messages.push({ role: "system", content: systemPrompt });
+            messages.push({ role: "user", content: text });
+        }
 
         const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
             method: "POST",
@@ -1668,11 +1757,8 @@ window.askAI = async () => {
             },
             body: JSON.stringify({
                 model: model,
-                messages: [
-                    { role: "system", content: systemPrompt },
-                    { role: "user", content: userContent }
-                ],
-                temperature: 0.7,
+                messages: messages,
+                temperature: 0.5,
                 max_tokens: 512
             })
         });
