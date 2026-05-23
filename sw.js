@@ -1,4 +1,4 @@
-const CACHE_NAME = 'diyet-v11';
+const CACHE_NAME = 'diyet-v12';
 const ASSETS = [
     './',
     './index.html',

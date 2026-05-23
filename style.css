@@ -522,7 +522,7 @@ main {
 }
 
 .diet-day-card.expanded .diet-details {
-    max-height: 500px;
+    max-height: 800px;
     margin-top: 15px;
     padding-top: 15px;
     border-top: 1px solid #eee;
@@ -536,6 +536,21 @@ main {
 .diet-day-card.expanded .ph-caret-down {
     transform: rotate(180deg);
 }
+
+/* Dashboard focused meal cards */
+.dashboard-meal-focus-card.active-focus {
+    background: linear-gradient(135deg, var(--white) 0%, var(--secondary-color) 100%);
+    box-shadow: 0 8px 30px rgba(0,0,0,0.08);
+}
+
+.dashboard-meal-focus-card.next-focus {
+    opacity: 0.85;
+}
+
+.dashboard-meal-focus-card.next-focus:hover {
+    opacity: 1;
+}
+
 
 .diet-details p {
     margin-bottom: 10px;

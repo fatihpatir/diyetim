@@ -616,6 +616,7 @@ function switchTab(tab) {
     });
     renderTab(tab);
 }
+window.switchTab = switchTab;
 
 function renderTab(tab) {
     mainContent.innerHTML = '';
@@ -848,46 +849,55 @@ function getActiveMealIndex() {
 
 function renderDashboardMeals() {
     const activeIndex = getActiveMealIndex();
-    const nextIndex = (activeIndex + 1) % 7;
+    const nextIndex = (activeIndex + 1) % DIET_17_EKIM.meals.length;
+    const activeMeal = DIET_17_EKIM.meals[activeIndex];
+    const nextMeal = DIET_17_EKIM.meals[nextIndex];
 
-    return DIET_17_EKIM.meals.map((meal, index) => {
+    const renderMiniCard = (meal, index, type) => {
         const contentHTML = renderMealItemsHTML(meal);
-        const isExpanded = index === activeIndex;
-        
-        let statusBadge = '';
-        if (index === activeIndex) {
-            statusBadge = '<span class="meal-status-badge active-meal-badge"><i class="ph ph-check-circle"></i> Şu Anki Öğün</span>';
-        } else if (index === nextIndex) {
-            statusBadge = '<span class="meal-status-badge next-meal-badge"><i class="ph ph-arrow-circle-right"></i> Sıradaki Öğün</span>';
-        }
+        const isActive = (type === 'active');
+        const badgeHTML = isActive
+            ? `<span class="meal-status-badge active-meal-badge"><i class="ph ph-check-circle"></i> Şu Anki Öğün</span>`
+            : `<span class="meal-status-badge next-meal-badge"><i class="ph ph-arrow-circle-right"></i> Sıradaki Öğün</span>`;
 
         return `
-            <div class="card diet-day-card ${isExpanded ? 'expanded' : ''}" id="dash-meal-${index}" style="margin-bottom: 12px; padding: 16px 20px;">
+            <div class="card diet-day-card dashboard-meal-focus-card ${isActive ? 'expanded active-focus' : 'next-focus'}" id="dash-meal-${index}" style="margin-bottom: 12px; padding: 16px 20px; border: 2px solid ${isActive ? meal.color : 'transparent'}">
                 <div class="diet-day-header" onclick="window.toggleDashboardMeal(${index})" style="cursor:pointer">
                     <div style="display:flex; align-items:center; gap:10px; flex:1">
-                        <div class="item-icon-circle" style="background: ${meal.bg}; color: ${meal.color}; width: 28px; height: 28px; font-size: 14px;">
+                        <div class="item-icon-circle" style="background: ${meal.bg}; color: ${meal.color}; width: 32px; height: 32px; font-size: 16px;">
                             <i class="ph ${meal.icon}"></i>
                         </div>
-                        <h3 style="color:var(--text-color); font-size:15px; font-weight:600">${meal.name}</h3>
+                        <div>
+                            <h3 style="color:var(--text-color); font-size:15px; font-weight:600; margin-bottom:2px">${meal.name}</h3>
+                            <span style="font-size:11px; color:var(--text-light)">${meal.time}</span>
+                        </div>
                     </div>
                     <div style="display:flex; align-items:center; gap:8px">
-                        ${statusBadge}
-                        <span class="date-badge" style="background:${meal.bg}; color:${meal.color}; font-size:10px">${meal.time}</span>
-                        <i class="ph ph-caret-down" style="font-size:12px; color:var(--text-light)"></i>
+                        ${badgeHTML}
+                        <i class="ph ph-caret-down" style="font-size:14px; color:var(--text-light); transition: transform 0.3s"></i>
                     </div>
                 </div>
-                <div class="diet-details" style="border-top: none; transition: max-height 0.3s ease;">
+                <div class="diet-details" style="border-top: none;">
                     <div class="meal-content-text" style="font-size:13.5px; padding-top:12px; color:var(--text-color); line-height:1.6">
                         ${contentHTML}
                     </div>
                 </div>
             </div>
         `;
-    }).join('');
+    };
+
+    return renderMiniCard(activeMeal, activeIndex, 'active') + renderMiniCard(nextMeal, nextIndex, 'next');
 }
 
 window.toggleDashboardMeal = (index) => {
     const cardEl = document.getElementById(`dash-meal-${index}`);
+    if (cardEl) {
+        cardEl.classList.toggle('expanded');
+    }
+};
+
+window.toggleDietMeal = (index) => {
+    const cardEl = document.getElementById(`diet-meal-${index}`);
     if (cardEl) {
         cardEl.classList.toggle('expanded');
     }
@@ -910,103 +920,19 @@ function renderDashboard() {
     const remaining = Math.max(0, 3.5 - (state.water.count / 1000)).toFixed(1);
 
     // Calorie Calculations
-    const bmr = calculateBMR();
-    const stepCal = state.daily.steps * 0.04; // 1 step approx 0.04 cal
-    const totalBurned = Math.round(bmr + stepCal);
+    const bmrDaily = calculateBMR();
+    const now = new Date();
+    const hoursPassed = now.getHours() + now.getMinutes() / 60;
+    const bmr = Math.round(bmrDaily * (hoursPassed / 24));
+    const stepCal = Math.round(state.daily.steps * 0.04);
+    const totalBurned = bmr + stepCal;
     const totalIntake = state.daily.intake.reduce((sum, item) => sum + item.kcal, 0);
     const netBalance = totalBurned - totalIntake;
     const estimatedLoss = (netBalance / 7700 * 1000).toFixed(0); // 7700 cal ≈ 1kg loss
 
     const dashboardHTML = `
         <div class="dashboard-top-section">
-            <div class="card status-summary-card" style="background: linear-gradient(135deg, var(--primary-color), var(--primary-dark)); color: white; padding: 20px; border: none;">
-                <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:15px">
-                    <div>
-                        <span style="font-size:12px; opacity:0.9">Bugünkü Net Durum</span>
-                        <h2 style="margin:0; font-size:24px; color:white">${netBalance > 0 ? '+' : ''}${netBalance} kcal</h2>
-                    </div>
-                    <div style="text-align:right">
-                        <i class="ph ph-fire-simple" style="font-size:32px; opacity:0.8"></i>
-                    </div>
-                </div>
-                
-                <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:10px; background: rgba(255,255,255,0.1); padding:12px; border-radius:12px">
-                    <div style="text-align:center">
-                        <div style="font-size:10px; opacity:0.8">Yanan</div>
-                        <div style="font-weight:600">${totalBurned}</div>
-                    </div>
-                    <div style="text-align:center; border-left: 1px solid rgba(255,255,255,0.2); border-right: 1px solid rgba(255,255,255,0.2)">
-                        <div style="font-size:10px; opacity:0.8">Alınan</div>
-                        <div style="font-weight:600">${totalIntake}</div>
-                    </div>
-                    <div style="text-align:center">
-                        <div style="font-size:10px; opacity:0.8">Tahmini Kayıp</div>
-                        <div style="font-weight:600">${estimatedLoss > 0 ? estimatedLoss : 0}g</div>
-                    </div>
-                </div>
-
-                <div style="margin-top:15px; font-size:12px; text-align:center; background:rgba(0,0,0,0.1); padding:8px; border-radius:8px">
-                    ${netBalance > 500 ? "🔥 Müthiş gidiyorsun, yağ yakımı başladı!" : "🥗 Dengeli beslenmeye devam, su içmeyi unutma!"}
-                </div>
-            </div>
-
-            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-top:12px">
-                <div class="card" style="padding:15px; margin-top:0">
-                    <div style="display:flex; align-items:center; justify-content:space-between">
-                        <div style="display:flex; align-items:center; gap:8px">
-                            <div class="item-icon-circle" style="background:#fff3e0; color:#ff9800; width:30px; height:30px; font-size:12px"><i class="ph ph-steps"></i></div>
-                            <div style="font-weight:600; font-size:14px">${state.daily.steps}</div>
-                        </div>
-                        <button class="btn-primary-small" onclick="window.promptSteps()" style="background:#ff9800; border:none; padding:4px 8px; font-size:10px">Yaz</button>
-                    </div>
-                </div>
-                <div class="card" style="padding:15px; margin-top:0">
-                    <div style="display:flex; align-items:center; justify-content:space-between">
-                        <div style="display:flex; align-items:center; gap:8px">
-                            <div class="item-icon-circle" style="background:#e8f5e9; color:#4caf50; width:30px; height:30px; font-size:12px"><i class="ph ph-plus"></i></div>
-                            <div style="font-weight:600; font-size:14px">Öğün</div>
-                        </div>
-                        <button class="btn-primary-small" onclick="window.promptManualIntake()" style="background:#4caf50; border:none; padding:4px 8px; font-size:10px">Ekle</button>
-                    </div>
-                </div>
-            </div>
-
-            <div id="daily-intake-list" style="margin-top:12px; display: ${state.daily.intake.length > 0 ? 'block' : 'none'}">
-                <div class="card" style="padding:15px">
-                    <h3 style="font-size:14px; margin-bottom:10px; color:var(--text-color); display:flex; align-items:center; gap:8px">
-                        <i class="ph ph-list-checks" style="color:var(--primary-dark)"></i> Bugün Yenilenler
-                    </h3>
-                    <div style="display:flex; flex-direction:column; gap:8px">
-                        ${state.daily.intake.map((item, idx) => `
-                            <div style="display:flex; justify-content:space-between; align-items:center; background:rgba(0,0,0,0.02); padding:8px 12px; border-radius:8px; font-size:13px">
-                                <div>
-                                    <span style="font-weight:600">${item.label}</span>
-                                    <span style="font-size:10px; color:var(--text-light); margin-left:5px">${item.time}</span>
-                                </div>
-                                <div style="display:flex; align-items:center; gap:10px">
-                                    <span style="color:var(--primary-dark); font-weight:600">${item.kcal} kcal</span>
-                                    <i class="ph ph-trash" style="color:#ef5350; cursor:pointer" onclick="window.removeIntake(${idx})"></i>
-                                </div>
-                            </div>
-                        `).join('')}
-                    </div>
-                </div>
-            </div>
-
-            <div class="card" style="padding:15px; margin-top:12px">
-                <div style="display:flex; align-items:center; justify-content:space-between">
-                    <div style="display:flex; align-items:center; gap:10px">
-                        <div class="item-icon-circle" style="background:#fff3e0; color:#ff9800; width:35px; height:35px"><i class="ph ph-steps"></i></div>
-                        <div>
-                            <div style="font-size:11px; color:var(--text-light)">Bugünkü Adım</div>
-                            <div style="font-weight:600; font-size:16px">${state.daily.steps}</div>
-                        </div>
-                    </div>
-                    <button class="btn-primary-small" onclick="window.promptSteps()" style="background:#ff9800; border:none; padding:8px 15px">Güncelle</button>
-                </div>
-            </div>
-
-            <div class="card water-card-horizontal" style="margin-top:12px">
+            <div class="card water-card-horizontal">
                 <div class="horizontal-bar-container">
                     <div class="bar-fill-horizontal" style="width: ${waterPercent}%"></div>
                     <div class="bar-info-overlay">
@@ -1036,18 +962,100 @@ function renderDashboard() {
                     </button>
                 </div>
             </div>
+
+            <div class="card status-summary-card" style="background: linear-gradient(135deg, var(--primary-color), var(--primary-dark)); color: white; padding: 20px; border: none; margin-top: 12px;">
+                <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:15px">
+                    <div>
+                        <span style="font-size:12px; opacity:0.9">Bugünkü Net Durum</span>
+                        <h2 style="margin:0; font-size:24px; color:white">${netBalance > 0 ? '+' : ''}${netBalance} kcal</h2>
+                    </div>
+                    <div style="text-align:right">
+                        <i class="ph ph-fire-simple" style="font-size:32px; opacity:0.8"></i>
+                    </div>
+                </div>
+                
+                <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:10px; background: rgba(255,255,255,0.1); padding:12px; border-radius:12px">
+                    <div style="text-align:center">
+                        <div style="font-size:10px; opacity:0.8">Yanan</div>
+                        <div style="font-weight:600">${totalBurned}</div>
+                        <div style="font-size:8px; opacity:0.6; margin-top:2px">Vücut: ${bmr} + Adım: ${stepCal}</div>
+                    </div>
+                    <div style="text-align:center; border-left: 1px solid rgba(255,255,255,0.2); border-right: 1px solid rgba(255,255,255,0.2)">
+                        <div style="font-size:10px; opacity:0.8">Alınan</div>
+                        <div style="font-weight:600">${totalIntake}</div>
+                    </div>
+                    <div style="text-align:center">
+                        <div style="font-size:10px; opacity:0.8">Tahmini Kayıp</div>
+                        <div style="font-weight:600">${estimatedLoss > 0 ? estimatedLoss : 0}g</div>
+                    </div>
+                </div>
+
+                <div style="margin-top:15px; font-size:12px; text-align:center; background:rgba(0,0,0,0.1); padding:8px; border-radius:8px">
+                    ${netBalance > 500 ? "🔥 Müthiş gidiyorsun, yağ yakımı başladı!" : "🥗 Dengeli beslenmeye devam, su içmeyi unutma!"}
+                </div>
+            </div>
+
+            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-top:12px">
+                <div class="card" style="padding:15px; margin-top:0">
+                    <div style="display:flex; align-items:center; justify-content:space-between">
+                        <div style="display:flex; align-items:center; gap:8px">
+                            <div class="item-icon-circle" style="background:#fff3e0; color:#ff9800; width:30px; height:30px; font-size:16px"><i class="ph ph-person-simple-walk"></i></div>
+                            <div>
+                                <div style="font-size:10px; color:var(--text-light)">Adım</div>
+                                <div style="font-weight:600; font-size:14px">${state.daily.steps}</div>
+                            </div>
+                        </div>
+                        <button class="btn-primary-small" onclick="window.promptSteps()" style="background:#ff9800; border:none; padding:4px 8px; font-size:10px">Güncelle</button>
+                    </div>
+                </div>
+                <div class="card" style="padding:15px; margin-top:0">
+                    <div style="display:flex; align-items:center; justify-content:space-between">
+                        <div style="display:flex; align-items:center; gap:8px">
+                            <div class="item-icon-circle" style="background:#e8f5e9; color:#4caf50; width:30px; height:30px; font-size:16px"><i class="ph ph-plus-circle"></i></div>
+                            <div style="font-weight:600; font-size:14px">Öğün Ekle</div>
+                        </div>
+                        <button class="btn-primary-small" onclick="switchTab('ai')" style="background:#ab47bc; border:none; padding:4px 8px; font-size:10px">Ekle</button>
+                    </div>
+                </div>
+            </div>
+
+            <div id="daily-intake-list" style="margin-top:12px; display: ${state.daily.intake.length > 0 ? 'block' : 'none'}">
+                <div class="card" style="padding:15px">
+                    <h3 style="font-size:14px; margin-bottom:10px; color:var(--text-color); display:flex; align-items:center; gap:8px">
+                        <i class="ph ph-list-checks" style="color:var(--primary-dark)"></i> Bugün Yenilenler
+                    </h3>
+                    <div style="display:flex; flex-direction:column; gap:8px">
+                        ${state.daily.intake.map((item, idx) => `
+                            <div style="display:flex; justify-content:space-between; align-items:center; background:rgba(0,0,0,0.02); padding:8px 12px; border-radius:8px; font-size:13px">
+                                <div style="flex:1; min-width:0">
+                                    <span style="font-weight:600">${item.label}</span>
+                                    <span style="font-size:10px; color:var(--text-light); margin-left:5px">${item.time}</span>
+                                </div>
+                                <div style="display:flex; align-items:center; gap:8px; flex-shrink:0">
+                                    <span style="color:var(--primary-dark); font-weight:600; font-size:12px">${item.kcal} kcal</span>
+                                    <i class="ph ph-pencil-simple" style="color:#ff9800; cursor:pointer; font-size:16px" onclick="window.editIntake(${idx})"></i>
+                                    <i class="ph ph-trash" style="color:#ef5350; cursor:pointer; font-size:16px" onclick="window.removeIntake(${idx})"></i>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            </div>
+
         </div>
 
         <div class="dashboard-diet-section">
-            <div class="card-header-main" style="margin-bottom: 15px; padding: 0 10px;">
+            <div class="card-header-main" style="margin-bottom: 8px; padding: 0 10px;">
                 <h2 style="font-size:18px; font-weight:600; margin-bottom:0; display:flex; align-items:center; gap:8px">
-                    <i class="ph ph-broccoli" style="color:var(--primary-dark)"></i> ${state.user.name ? state.user.name + " İçin Bugünün Planı" : "Bugünün Planı"}
+                    <i class="ph ph-broccoli" style="color:var(--primary-dark)"></i> ${state.user.name ? state.user.name + "'in Öğün Takibi" : "Öğün Takibi"}
                 </h2>
-
+                <button onclick="switchTab('diet')" style="background:var(--secondary-color); border:none; padding:6px 12px; border-radius:12px; font-size:12px; font-weight:600; color:var(--primary-dark); cursor:pointer; display:flex; align-items:center; gap:5px;">
+                    <i class="ph ph-list"></i> Tüm Liste
+                </button>
             </div>
             
-            <p class="diet-intro-note" style="margin: 0 10px 15px; font-size:12px; color:var(--text-light)">
-                💡 Altı çizili besinlere dokunarak alternatiflerini görebilirsiniz.
+            <p class="diet-intro-note" style="margin: 0 10px 12px; font-size:12px; color:var(--text-light)">
+                💡 Besinlere dokunarak alternatifleri görebilirsiniz.
             </p>
 
             <div class="today-diet-list-accordion">
@@ -1123,21 +1131,31 @@ function renderDietList() {
         <div class="diet-cards-container">
     `;
     
-    DIET_17_EKIM.meals.forEach((meal) => {
+    const activeIndex = getActiveMealIndex();
+    DIET_17_EKIM.meals.forEach((meal, index) => {
         const contentHTML = renderMealItemsHTML(meal);
+        const isActive = index === activeIndex;
         dietHTML += `
-            <div class="card diet-day-card expanded" style="margin-bottom: 15px; padding: 20px;">
-                <div class="diet-day-header" style="border-bottom: 1px solid #f2f2f2; padding-bottom: 8px; margin-bottom: 8px;">
-                    <div style="display:flex; align-items:center; gap:10px">
+            <div class="card diet-day-card" id="diet-meal-${index}" style="margin-bottom: 12px; padding: 16px 20px; ${isActive ? `border: 2px solid ${meal.color};` : ''}">
+                <div class="diet-day-header" onclick="window.toggleDietMeal(${index})" style="cursor:pointer">
+                    <div style="display:flex; align-items:center; gap:10px; flex:1">
                         <div class="item-icon-circle" style="background: ${meal.bg}; color: ${meal.color}; width: 30px; height: 30px; font-size: 15px; margin-bottom:0">
                             <i class="ph ${meal.icon}"></i>
                         </div>
-                        <h3 style="color:var(--text-color); font-size:16px; font-weight:600">${meal.name}</h3>
+                        <div>
+                            <h3 style="color:var(--text-color); font-size:15px; font-weight:600; margin-bottom:2px">${meal.name}</h3>
+                            <span style="font-size:11px; color:var(--text-light)">${meal.time}</span>
+                        </div>
                     </div>
-                    <span class="date-badge" style="background:${meal.bg}; color:${meal.color}">${meal.time}</span>
+                    <div style="display:flex; align-items:center; gap:8px">
+                        ${isActive ? `<span class="meal-status-badge active-meal-badge" style="font-size:10px"><i class="ph ph-check-circle"></i> Şu Anki</span>` : ''}
+                        <i class="ph ph-caret-down" style="font-size:14px; color:var(--text-light); transition: transform 0.3s"></i>
+                    </div>
                 </div>
-                <div class="diet-details-static" style="font-size:14px; line-height:1.6; color:var(--text-color); padding-top:8px">
-                    ${contentHTML}
+                <div class="diet-details" style="border-top: none;">
+                    <div style="font-size:13.5px; padding-top:12px; line-height:1.6; color:var(--text-color)">
+                        ${contentHTML}
+                    </div>
                 </div>
             </div>
         `;
@@ -1159,6 +1177,13 @@ function renderDietList() {
     `;
     
     mainContent.innerHTML = dietHTML;
+
+    // Auto-expand the active meal on diet list page
+    const activeIdx = getActiveMealIndex();
+    const activeDietCard = document.getElementById(`diet-meal-${activeIdx}`);
+    if (activeDietCard) {
+        activeDietCard.classList.add('expanded');
+    }
 }
 
 // --- Stats / Daily Log ---
@@ -1560,6 +1585,42 @@ window.removeIntake = (idx) => {
     }
 };
 
+window.editIntake = (idx) => {
+    const item = state.daily.intake[idx];
+    if (!item) return;
+    modalBody.innerHTML = `
+        <div style="padding:5px">
+            <h2 style="display:flex; align-items:center; gap:8px; margin-bottom:20px">
+                <i class="ph ph-pencil-simple" style="color:#ff9800"></i> Öğün Düzenle
+            </h2>
+            <div class="input-group">
+                <label>İsim</label>
+                <input type="text" id="edit-intake-label" value="${item.label.replace(/"/g, '&quot;')}" />
+            </div>
+            <div class="input-group">
+                <label>Kalori (kcal)</label>
+                <input type="number" id="edit-intake-kcal" value="${item.kcal}" />
+            </div>
+            <button class="btn-primary" id="save-edit-intake" style="margin-top:10px">
+                <i class="ph ph-check-circle" style="font-size:18px; vertical-align:middle; margin-right:5px"></i> Kaydet
+            </button>
+        </div>
+    `;
+    modalContainer.classList.remove('hidden');
+
+    document.getElementById('save-edit-intake').addEventListener('click', () => {
+        const newLabel = document.getElementById('edit-intake-label').value.trim();
+        const newKcal = parseInt(document.getElementById('edit-intake-kcal').value);
+        if (!newLabel) { alert('Lütfen bir isim girin.'); return; }
+        if (isNaN(newKcal) || newKcal < 0) { alert('Lütfen geçerli bir kalori değeri girin.'); return; }
+        state.daily.intake[idx].label = newLabel;
+        state.daily.intake[idx].kcal = newKcal;
+        storage.set('diyet_daily', state.daily);
+        modalContainer.classList.add('hidden');
+        renderTab('dashboard');
+    });
+};
+
 window.resetEverything = () => {
     if (confirm("DİKKAT! Tüm bilgileriniz, kilo kayıtlarınız ve ayarlarınız tamamen silinecek. Bu işlem geri alınamaz. Onaylıyor musunuz?")) {
         localStorage.clear();
@@ -1705,7 +1766,7 @@ window.clearAIImage = () => {
 
 // Groq API
 const DEFAULT_GROQ_API_KEY = "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";
-const GROQ_VISION_MODEL = "llama-3.2-90b-vision-preview"; // 11b kaldırıldıysa 90b en güncel alternatiftir
+const GROQ_VISION_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct";
 const GROQ_TEXT_MODEL = "llama-3.3-70b-versatile";
 
 window.askAI = async () => {
@@ -1729,7 +1790,7 @@ window.askAI = async () => {
     document.getElementById('ai-response-text').classList.add('hidden');
     
     try {
-        let systemPrompt = "Sen uzman bir diyetisyen yapay zekasısın. Görevin, kullanıcının yediği yemeği/içeceği analiz etmek. Eğer bir fotoğraf varsa onu tanı, yoksa metne odaklan. Tahmini kalorisini söyle ve diyete uygun olup olmadığını kısaca, samimi ve Türkçe bir şekilde anlat. (Maksimum 3-4 cümle)";
+        let systemPrompt = "Sen uzman bir diyetisyen yapay zekasısın. Görevin, kullanıcının yediği yemeği/içeceği analiz etmek. Eğer bir fotoğraf varsa onu tanı, yoksa metne odaklan. Tahmini kalorisini söyle ve diyete uygun olup olmadığını kısaca, samimi ve Türkçe bir şekilde anlat. (Maksimum 3-4 cümle) ÖNEMLİ: Cevabının en başına, tek satır olarak ve köşeli parantez içinde, yemeğin/içeceğin düzeltilmiş ve tam Türkçe adını yaz. Örnek: [Haşlanmış Yumurta] veya [Mercimek Çorbası]. Bu satırdan sonra açıklamana devam et.";
         
         const model = imageBase64 ? GROQ_VISION_MODEL : GROQ_TEXT_MODEL;
 
@@ -1778,18 +1839,26 @@ window.askAI = async () => {
             const aiText = data.choices[0].message.content;
             const formattedHtml = aiText.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br>');
             
-            // Try to extract calorie from AI text
+            // Yapay zekanın cevabından yemek adını çıkar ([Ad] formatında)
+            const nameMatch = aiText.match(/^\[(.+?)\]/);
+            const foodName = nameMatch ? nameMatch[1] : (text ? (text.length > 25 ? text.substring(0,25)+"..." : text) : "AI Analizi");
+            
+            // Kaloriyi çıkar
             const kcalMatch = aiText.match(/(\d+)\s*kcal/i) || aiText.match(/(\d+)\s*kalori/i);
             const kcal = kcalMatch ? kcalMatch[1] : 200;
-            const foodName = text ? (text.length > 20 ? text.substring(0,20)+"..." : text) : "AI Analizi";
+            
+            // Başlık satırını cevap metninden gizle
+            const cleanedHtml = formattedHtml.replace(/^\[.+?\]\s*<br>/i, '').replace(/^\[.+?\]\s*/i, '');
 
             responseTextEl.innerHTML = `
                 <div style="display:flex; gap:10px; align-items:flex-start;">
                     <i class="ph ph-sparkle" style="color:#ab47bc; font-size:20px; flex-shrink:0;"></i>
                     <div style="width:100%">
-                        ${formattedHtml}
+                        <div style="font-size:12px; font-weight:700; color:#ab47bc; margin-bottom:8px; letter-spacing:0.3px">📌 ${foodName}</div>
+                        ${cleanedHtml}
                         <div style="margin-top:15px; border-top:1px solid rgba(0,0,0,0.05); padding-top:10px">
-                            <button class="btn-primary-small" onclick="window.addToDailyIntake('${kcal}', '${foodName}')" style="background:#ab47bc; border:none; width:100%; justify-content:center; color:white">
+                            <button class="btn-primary-small" onclick="window.addToDailyIntake('${kcal}', '${foodName.replace(/'/g, "&apos;")}')"
+                                style="background:#ab47bc; border:none; width:100%; justify-content:center; color:white">
                                 <i class="ph ph-plus-circle"></i> Günlüğüme Ekle (${kcal} kcal)
                             </button>
                         </div>
