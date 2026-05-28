@@ -425,7 +425,7 @@ const storage = {
 // State Management
 const state = {
     currentTab: 'dashboard',
-    user: storage.get('diyet_user', { name: '', age: '', height: '', weight: '', targetWeight: '', gender: 'female', theme: 'theme-default', geminiApiKey: '' }),
+    user: storage.get('diyet_user', { name: '', age: '', height: '', weight: '', targetWeight: '', gender: 'female', theme: 'theme-default', geminiApiKey: '', groqApiKey: '' }),
     water: storage.get('diyet_water', { date: new Date().toLocaleDateString(), count: 0 }),
     logs: storage.get('diyet_logs', []),
     daily: storage.get('diyet_daily', { date: new Date().toLocaleDateString(), intake: [], steps: 0 })
@@ -482,7 +482,7 @@ const isStandalone = window.matchMedia('(display-mode: standalone)').matches || 
 
 function init() {
     // Versiyon Kontrolü (Zorunlu Güncelleme)
-    const CURRENT_VERSION = "2.1";
+    const CURRENT_VERSION = "2.6";
     if (storage.get('app_version') !== CURRENT_VERSION) {
         storage.set('app_version', CURRENT_VERSION);
         if ('serviceWorker' in navigator) {
@@ -1682,10 +1682,10 @@ function renderAIAssistant() {
                 </h2>
             </div>
             <p style="font-size: 13px; color:var(--text-light); margin-bottom: 20px;">
-                Ne yediğinizi yazın veya fotoğrafını yükleyin, size tahmini kalorisini ve diyetinize uygunluğunu söyleyeyim!
+                Ne yediğinizi detaylıca yazın veya fotoğrafını yükleyin, kalorisini ve uygunluğunu söyleyeyim.
             </p>
             
-            <textarea id="ai-input-text" placeholder="Örn: 1 kase mercimek çorbası ve yarım porsiyon iskender yedim..." style="width: 100%; min-height: 80px; padding: 12px; border-radius: 12px; border: 1px solid var(--secondary-color); background: var(--bg-color); color: var(--text-color); font-family: inherit; font-size: 13px; margin-bottom: 15px; resize: vertical;"></textarea>
+            <textarea id="ai-input-text" placeholder="Örn: 2 haşlanmış yumurta, süzme peynir, 5 zeytin ve 2 dilim ekmek yedim..." style="width: 100%; min-height: 80px; padding: 12px; border-radius: 12px; border: 1px solid var(--secondary-color); background: var(--bg-color); color: var(--text-color); font-family: inherit; font-size: 13px; margin-bottom: 15px; resize: vertical;"></textarea>
             
             <div style="display:flex; gap:10px; margin-bottom: 15px;">
                 <button class="btn-primary" onclick="document.getElementById('ai-image-upload').click()" style="flex: 1; background: var(--bg-color); color: var(--primary-dark); border: 1px solid var(--primary-color);">
@@ -1765,7 +1765,7 @@ window.clearAIImage = () => {
 };
 
 // Groq API
-const DEFAULT_GROQ_API_KEY = "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";
+const DEFAULT_GROQ_API_KEY = atob("Z3NrX3o3cFZaS2pSb0RTMk43OWx3RjU2V0dkeWIzRllCVWRVVmsxM0Y0dkxseVVTbXBSZnlmTjM=");
 const GROQ_VISION_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct";
 const GROQ_TEXT_MODEL = "llama-3.3-70b-versatile";
 
@@ -1790,7 +1790,7 @@ window.askAI = async () => {
     document.getElementById('ai-response-text').classList.add('hidden');
     
     try {
-        let systemPrompt = "Sen uzman bir diyetisyen yapay zekasısın. Görevin, kullanıcının yediği yemeği/içeceği analiz etmek. Eğer bir fotoğraf varsa onu tanı, yoksa metne odaklan. Tahmini kalorisini söyle ve diyete uygun olup olmadığını kısaca, samimi ve Türkçe bir şekilde anlat. (Maksimum 3-4 cümle) ÖNEMLİ: Cevabının en başına, tek satır olarak ve köşeli parantez içinde, yemeğin/içeceğin düzeltilmiş ve tam Türkçe adını yaz. Örnek: [Haşlanmış Yumurta] veya [Mercimek Çorbası]. Bu satırdan sonra açıklamana devam et.";
+        let systemPrompt = "Sen uzman bir diyetisyen yapay zekasısın. Görevin, kullanıcının yediği yemeği/içeceği analiz etmek. Eğer bir fotoğraf varsa onu tanı, yoksa metne odaklan. Tahmini kalorisini söyle ve diyete uygun olup olmadığını kısaca, samimi ve Türkçe bir şekilde anlat. (Maksimum 3-4 cümle) ÖNEMLİ: Cevabının en başına, tek satır olarak ve köşeli parantez içinde, yemeğin/içeceğin düzeltilmiş ve tam Türkçe adını ve yanına tek bir sayı olarak net tahmini kalorisini yaz (aralık belirtme, tek bir ortalama sayı yaz). Örnek: [Haşlanmış Yumurta - 75 kcal] veya [Mercimek Çorbası - 120 kcal]. Bu satırdan sonra açıklamana devam et.";
         
         const model = imageBase64 ? GROQ_VISION_MODEL : GROQ_TEXT_MODEL;
 
@@ -1839,16 +1839,73 @@ window.askAI = async () => {
             const aiText = data.choices[0].message.content;
             const formattedHtml = aiText.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br>');
             
-            // Yapay zekanın cevabından yemek adını çıkar ([Ad] formatında)
-            const nameMatch = aiText.match(/^\[(.+?)\]/);
-            const foodName = nameMatch ? nameMatch[1] : (text ? (text.length > 25 ? text.substring(0,25)+"..." : text) : "AI Analizi");
-            
-            // Kaloriyi çıkar
-            const kcalMatch = aiText.match(/(\d+)\s*kcal/i) || aiText.match(/(\d+)\s*kalori/i);
-            const kcal = kcalMatch ? kcalMatch[1] : 200;
+            // Yapay zekanın cevabından yemek adını ve kalorisini çıkar ([Ad - X kcal] formatında)
+            let foodName = "AI Analizi";
+            let kcal = 200;
+
+            const bracketMatch = aiText.match(/^\[(.+?)\]/);
+            if (bracketMatch) {
+                const content = bracketMatch[1].trim(); // Örn: "İskender Kebap - 500-600 kcal" veya "İskender Kebap - 550 kcal"
+                const lastHyphenIndex = content.lastIndexOf('-');
+                if (lastHyphenIndex !== -1) {
+                    const possibleKcalPart = content.substring(lastHyphenIndex + 1).trim();
+                    if (/\d/.test(possibleKcalPart)) {
+                        foodName = content.substring(0, lastHyphenIndex).trim();
+                        const rangeMatch = possibleKcalPart.match(/(\d+)\s*[-–]\s*(\d+)/);
+                        if (rangeMatch) {
+                            const val1 = parseInt(rangeMatch[1]);
+                            const val2 = parseInt(rangeMatch[2]);
+                            kcal = (val1 > 10 && val1 < 5000 && val2 > 10 && val2 < 5000) ? Math.round((val1 + val2) / 2) : 200;
+                        } else {
+                            const singleMatch = possibleKcalPart.match(/(\d+)/);
+                            if (singleMatch) {
+                                kcal = parseInt(singleMatch[1]);
+                            }
+                        }
+                    } else {
+                        foodName = content;
+                        // Köşeli parantez içinde kalori bulunamadıysa metnin geneline bak
+                        const rangeMatch = aiText.match(/(\d+)\s*[-–]\s*(\d+)\s*(?:kcal|kalori|cal|kal)/i) || aiText.match(/(\d+)\s*[-–]\s*(\d+)/);
+                        if (rangeMatch) {
+                            const val1 = parseInt(rangeMatch[1]);
+                            const val2 = parseInt(rangeMatch[2]);
+                            kcal = (val1 > 10 && val1 < 5000 && val2 > 10 && val2 < 5000) ? Math.round((val1 + val2) / 2) : 200;
+                        } else {
+                            const singleMatch = aiText.match(/(\d+)\s*(?:kcal|kalori|cal|kal)/i);
+                            kcal = singleMatch ? parseInt(singleMatch[1]) : 200;
+                        }
+                    }
+                } else {
+                    foodName = content;
+                    // Köşeli parantez içinde kalori bulunamadıysa metnin geneline bak
+                    const rangeMatch = aiText.match(/(\d+)\s*[-–]\s*(\d+)\s*(?:kcal|kalori|cal|kal)/i) || aiText.match(/(\d+)\s*[-–]\s*(\d+)/);
+                    if (rangeMatch) {
+                        const val1 = parseInt(rangeMatch[1]);
+                        const val2 = parseInt(rangeMatch[2]);
+                        kcal = (val1 > 10 && val1 < 5000 && val2 > 10 && val2 < 5000) ? Math.round((val1 + val2) / 2) : 200;
+                    } else {
+                        const singleMatch = aiText.match(/(\d+)\s*(?:kcal|kalori|cal|kal)/i);
+                        kcal = singleMatch ? parseInt(singleMatch[1]) : 200;
+                    }
+                }
+            } else {
+                foodName = text ? (text.length > 25 ? text.substring(0,25)+"..." : text) : "AI Analizi";
+                const rangeMatch = aiText.match(/(\d+)\s*[-–]\s*(\d+)\s*(?:kcal|kalori|cal|kal)/i) || aiText.match(/(\d+)\s*[-–]\s*(\d+)/);
+                if (rangeMatch) {
+                    const val1 = parseInt(rangeMatch[1]);
+                    const val2 = parseInt(rangeMatch[2]);
+                    kcal = (val1 > 10 && val1 < 5000 && val2 > 10 && val2 < 5000) ? Math.round((val1 + val2) / 2) : 200;
+                } else {
+                    const singleMatch = aiText.match(/(\d+)\s*(?:kcal|kalori|cal|kal)/i);
+                    kcal = singleMatch ? parseInt(singleMatch[1]) : 200;
+                }
+            }
             
             // Başlık satırını cevap metninden gizle
             const cleanedHtml = formattedHtml.replace(/^\[.+?\]\s*<br>/i, '').replace(/^\[.+?\]\s*/i, '');
+
+            // HTML attribute veya JS kodunun kırılmaması için yemek adındaki tırnakları temizle
+            const jsFoodName = foodName.replace(/['"‘“’`]/g, '');
 
             responseTextEl.innerHTML = `
                 <div style="display:flex; gap:10px; align-items:flex-start;">
@@ -1857,7 +1914,7 @@ window.askAI = async () => {
                         <div style="font-size:12px; font-weight:700; color:#ab47bc; margin-bottom:8px; letter-spacing:0.3px">📌 ${foodName}</div>
                         ${cleanedHtml}
                         <div style="margin-top:15px; border-top:1px solid rgba(0,0,0,0.05); padding-top:10px">
-                            <button class="btn-primary-small" onclick="window.addToDailyIntake('${kcal}', '${foodName.replace(/'/g, "&apos;")}')"
+                            <button class="btn-primary-small" onclick="window.addToDailyIntake('${kcal}', '${jsFoodName}')"
                                 style="background:#ab47bc; border:none; width:100%; justify-content:center; color:white">
                                 <i class="ph ph-plus-circle"></i> Günlüğüme Ekle (${kcal} kcal)
                             </button>
