@@ -544,10 +544,24 @@ const WaterReminderManager = {
                 storage.set('diyet_user', state.user);
                 
                 const userName = state.user.name ? `${state.user.name}, ` : "";
-                WaterReminderManager.sendNotification(
-                    "Hatırlatıcılarınız Aktif! 💧",
-                    `Harika ${userName}izin onaylandı! Artık size sabah 08:00 ile akşam 22:00 arasında her saat başı su içme hatırlatmaları göndereceğim. Sağlıklı günler!`
-                );
+                // Hoşgeldin bildirimi - özel tag ile hemen gönder
+                const welcomeTitle = "Hatırlatıcılarınız Aktif! 🎉";
+                const welcomeBody = `Harika ${userName}bildirimler açıldı! Öğün saatlerinizde, su içme zamanlarınızda ve spor için sizi hatırlatacağım. Sağlıklı günler! 💧🏃‍♂️`;
+                const welcomeOptions = {
+                    body: welcomeBody,
+                    icon: 'icon.png',
+                    badge: 'icon.png',
+                    vibrate: [200, 100, 200, 100, 200],
+                    tag: 'welcome-notif',
+                    renotify: true
+                };
+                if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+                    navigator.serviceWorker.ready.then(reg => {
+                        reg.showNotification(welcomeTitle, welcomeOptions);
+                    }).catch(() => new Notification(welcomeTitle, welcomeOptions));
+                } else {
+                    new Notification(welcomeTitle, welcomeOptions);
+                }
                 
                 if (state.currentTab === 'profile') renderProfile();
                 return true;
@@ -606,8 +620,72 @@ const WaterReminderManager = {
         }
     },
 
+    // Öğün saatleri gelince bildirim tetikleme kontrolü
+    checkAndSendMealReminders: () => {
+        if (!state.user.waterReminder) return;
+        if (Notification.permission !== 'granted') return;
+
+        const now = new Date();
+        const currentHour = now.getHours();
+        const currentMinute = now.getMinutes();
+        const todayStr = now.toLocaleDateString();
+
+        // Öğün saatleri tanımları
+        const mealsConfig = [
+            { key: "breakfast", hour: 7, minute: 0, title: "Kahvaltı Vakti! 🍳", body: "Güne zinde başlamak için kahvaltı vakti! Yumurtan ve ekmeğin hazır mı?" },
+            { key: "snack1", hour: 9, minute: 30, title: "Ara Öğün Vakti! 🍎", body: "Mola zamanı! Kuru kayısı veya taze meyveni yemeyi unutma." },
+            { key: "lunch", hour: 12, minute: 0, title: "Öğle Yemeği Vakti! 🥗", body: "Öğle yemeği saati geldi! Sebze yemeğin ve yoğurdun seni bekliyor." },
+            { key: "snack2", hour: 15, minute: 30, title: "Ara Öğün Vakti! ☕", body: "Gün ortası atıştırmalığı! Leblebini yiyip suyunu içme vakti." },
+            { key: "dinner", hour: 18, minute: 0, title: "Akşam Yemeği Vakti! 🍗", body: "Akşam yemeği saati! Protein ağırlıklı öğününle gününü harika kapat." },
+            { key: "snack3", hour: 21, minute: 0, title: "Gece Arası Vakti! 🥛", body: "Günün son hafif öğünü! Yulaflı sütün ve tarçınlı muzun hazır mı?" }
+        ];
+
+        mealsConfig.forEach(meal => {
+            if (currentHour === meal.hour && currentMinute === meal.minute) {
+                const uniqueKey = `meal_${meal.key}_${todayStr}`;
+                const hasSent = storage.get(uniqueKey, false);
+
+                if (!hasSent) {
+                    WaterReminderManager.sendNotification(meal.title, meal.body);
+                    storage.set(uniqueKey, true);
+                    console.log(`Öğün bildirimi tetiklendi: ${meal.key}`);
+                }
+            }
+        });
+    },
+
+    // Günlük yürüyüş ve spor bildirimini tetikleme kontrolü (Saat 12:30'da)
+    checkAndSendWalkReminder: () => {
+        if (!state.user.waterReminder) return;
+        if (Notification.permission !== 'granted') return;
+
+        const now = new Date();
+        const currentHour = now.getHours();
+        const currentMinute = now.getMinutes();
+        const todayStr = now.toLocaleDateString();
+
+        // Saat tam 12:30'da
+        if (currentHour === 12 && currentMinute === 30) {
+            const uniqueKey = `walk_reminder_${todayStr}`;
+            const hasSent = storage.get(uniqueKey, false);
+
+            if (!hasSent) {
+                WaterReminderManager.sendNotification(
+                    "Yürüyüş & Spor Zamanı! 🏃‍♂️",
+                    "Bugün en az 30 dakika yürüyüş veya egzersiz yapmayı unutma! Vücudunu hareket ettirmek sana harika hissettirecek. 💪"
+                );
+                storage.set(uniqueKey, true);
+                console.log("Yürüyüş/Spor bildirimi tetiklendi.");
+            }
+        }
+    },
+
     // Saatlik kontrol algoritması (Sadece Standart PWA modunda çalışır, OneSignal kendisi arka plandan atar)
     checkAndSendHourlyWaterReminder: () => {
+        // Yardımcı bildirim kontrollerini çalıştır
+        WaterReminderManager.checkAndSendMealReminders();
+        WaterReminderManager.checkAndSendWalkReminder();
+
         // Eğer OneSignal devredeyse onun kendi arka plan push sistemi vardır, client-side check çalışmasın
         if (ONESIGNAL_APP_ID && ONESIGNAL_APP_ID !== "SİZİN_ONESIGNAL_APP_ID_DEĞERİNİZ") return;
 
@@ -795,8 +873,8 @@ function showInfo() {
         <p style="font-weight:600; color:var(--primary-dark); margin-top:15px">Sağlıklı günler dileriz!</p>
         
         <div class="developer-credit-modal">
-            <a href="https://fatihpatir.github.io/web" target="_blank">
-                <i class="ph ph-code"></i> Fatih PATIR tarafından geliştirildi
+            <a href="#" onclick="event.preventDefault()">
+                <i class="ph ph-heart" style="color:#ef5350"></i> Diyetim Uygulamasından Sevgilerle
             </a>
         </div>
     `;
@@ -1138,7 +1216,52 @@ function renderDashboard() {
     const netBalance = totalBurned - totalIntake;
     const estimatedLoss = (netBalance / 7700 * 1000).toFixed(0); // 7700 cal ≈ 1kg loss
 
+    // Bildirim izin banner'ı (izin verilmemişse ve kullanıcı kapatmadıysa göster)
+    const notifBannerDismissed = storage.get('notif_banner_dismissed', false);
+    const showNotifBanner = ('Notification' in window)
+        && Notification.permission !== 'granted'
+        && Notification.permission !== 'denied'
+        && !notifBannerDismissed;
+
+    const notifBannerHTML = showNotifBanner ? `
+        <div id="notif-permission-banner" style="
+            background: linear-gradient(135deg, #7c3aed, #4f46e5);
+            color: white;
+            padding: 14px 16px;
+            border-radius: 16px;
+            margin-bottom: 14px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            box-shadow: 0 4px 20px rgba(124,58,237,0.35);
+            cursor: pointer;
+            position: relative;
+        ">
+            <div style="font-size:28px; flex-shrink:0;">🔔</div>
+            <div style="flex:1; min-width:0">
+                <div style="font-weight:700; font-size:14px; margin-bottom:2px">Bildirimleri Aktif Et!</div>
+                <div style="font-size:12px; opacity:0.9; line-height:1.4">Öğün saatleri, su hatırlatmaları ve spor bildirimlerini almak için izin ver.</div>
+            </div>
+            <button id="notif-banner-close" style="
+                background: rgba(255,255,255,0.2);
+                border: none;
+                color: white;
+                width: 28px;
+                height: 28px;
+                border-radius: 50%;
+                font-size: 16px;
+                cursor: pointer;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                flex-shrink: 0;
+                font-weight: bold;
+            " title="Kapat">×</button>
+        </div>
+    ` : '';
+
     const dashboardHTML = `
+        ${notifBannerHTML}
         <div class="dashboard-top-section">
             <div class="card water-card-horizontal">
                 <div class="horizontal-bar-container">
@@ -1289,6 +1412,34 @@ function renderDashboard() {
     document.getElementById('add-1000').addEventListener('click', () => window.addWater(1000));
     document.getElementById('undo-water').addEventListener('click', () => window.addWater(-200));
     document.getElementById('copy-summary-btn').addEventListener('click', window.copySummary);
+
+    // Bildirim banner event listeners
+    const bannerEl = document.getElementById('notif-permission-banner');
+    if (bannerEl) {
+        bannerEl.addEventListener('click', async (e) => {
+            // × butonuna tıklandıysa sadece kapat
+            if (e.target.id === 'notif-banner-close' || e.target.closest('#notif-banner-close')) {
+                storage.set('notif_banner_dismissed', true);
+                bannerEl.style.opacity = '0';
+                bannerEl.style.transform = 'translateY(-10px)';
+                bannerEl.style.transition = 'opacity 0.3s, transform 0.3s';
+                setTimeout(() => bannerEl.remove(), 300);
+                return;
+            }
+            // Banner'a tıklandıysa izin iste
+            const granted = await WaterReminderManager.requestPermission(null);
+            if (granted) {
+                storage.set('notif_banner_dismissed', true);
+                bannerEl.style.opacity = '0';
+                bannerEl.style.transform = 'translateY(-10px)';
+                bannerEl.style.transition = 'opacity 0.3s, transform 0.3s';
+                setTimeout(() => bannerEl.remove(), 300);
+                // Profil toggle'ını da güncelle
+                const toggleEl = document.getElementById('water-reminder-toggle');
+                if (toggleEl) toggleEl.checked = true;
+            }
+        });
+    }
 }
 
 function calculateTotalDietCalories() {
@@ -1694,10 +1845,10 @@ function renderProfile() {
         <button class="btn-primary" id="save-profile" style="margin-bottom: 12px;">Değişiklikleri Kaydet</button>
         
         <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin-bottom:12px">
-            <button class="btn-primary-small" onclick="window.backupData()" style="background:var(--secondary-color); color:var(--text-color); border:none; padding:12px; width:100%; border-radius:12px">
+            <button class="btn-primary-small" onclick="window.backupData()" disabled style="background:var(--secondary-color); color:var(--text-color); border:none; padding:12px; width:100%; border-radius:12px; opacity:0.5; cursor:not-allowed;">
                 <i class="ph ph-export"></i> Yedekle
             </button>
-            <button class="btn-primary-small" onclick="window.restoreData()" style="background:var(--secondary-color); color:var(--text-color); border:none; padding:12px; width:100%; border-radius:12px">
+            <button class="btn-primary-small" onclick="window.restoreData()" disabled style="background:var(--secondary-color); color:var(--text-color); border:none; padding:12px; width:100%; border-radius:12px; opacity:0.5; cursor:not-allowed;">
                 <i class="ph ph-import"></i> Geri Yükle
             </button>
         </div>
@@ -1707,8 +1858,8 @@ function renderProfile() {
         </button>
         
         <div class="developer-credit-profile">
-            <a href="https://fatihpatir.github.io/web" target="_blank">
-                Fatih PATIR tarafından geliştirildi
+            <a href="#" onclick="event.preventDefault()">
+                Diyetim Uygulamasından
             </a>
         </div>
     `;
@@ -1863,37 +2014,13 @@ window.resetEverything = () => {
 };
 
 window.backupData = () => {
-    const allData = {
-        user: state.user,
-        logs: state.logs,
-        water: state.water,
-        daily: state.daily,
-        appVersion: storage.get('app_version')
-    };
-    const code = btoa(JSON.stringify(allData)); // Encode to base64
-    navigator.clipboard.writeText(code).then(() => {
-        alert("Yedekleme kodunuz başarıyla kopyalandı! Bu kodu bir yere not edin (WhatsApp, Notlar vb.). Verilerinizi geri getirmek için kullanabilirsiniz.");
-    });
+    alert("Yedekleme özelliği geçici olarak devre dışı bırakılmıştır.");
+    return;
 };
 
 window.restoreData = () => {
-    const code = prompt("Lütfen daha önce kopyaladığınız yedekleme kodunu buraya yapıştırın:");
-    if (!code) return;
-    try {
-        const decoded = JSON.parse(atob(code));
-        if (decoded.user && decoded.logs) {
-            storage.set('diyet_user', decoded.user);
-            storage.set('diyet_logs', decoded.logs);
-            storage.set('diyet_water', decoded.water);
-            storage.set('diyet_daily', decoded.daily);
-            alert("Harika! Verileriniz başarıyla geri yüklendi. Uygulama güncelleniyor...");
-            window.location.reload();
-        } else {
-            alert("Hatalı yedekleme kodu!");
-        }
-    } catch (e) {
-        alert("Kod geçersiz! Lütfen doğru kodu yapıştırdığınızdan emin olun.");
-    }
+    alert("Geri yükleme özelliği geçici olarak devre dışı bırakılmıştır.");
+    return;
 };
 
 function getBMICategory() {
