@@ -425,7 +425,7 @@ const storage = {
 // State Management
 const state = {
     currentTab: 'dashboard',
-    user: storage.get('diyet_user', { name: '', age: '', height: '', weight: '', targetWeight: '', gender: 'female', theme: 'theme-default', geminiApiKey: '', groqApiKey: '' }),
+    user: storage.get('diyet_user', { name: '', age: '', height: '', weight: '', targetWeight: '', gender: 'female', theme: 'theme-default', geminiApiKey: '', groqApiKey: '', openRouterApiKey: '' }),
     water: storage.get('diyet_water', { date: new Date().toLocaleDateString(), count: 0 }),
     logs: storage.get('diyet_logs', []),
     daily: storage.get('diyet_daily', { date: new Date().toLocaleDateString(), intake: [], steps: 0 })
@@ -482,7 +482,7 @@ const isStandalone = window.matchMedia('(display-mode: standalone)').matches || 
 
 function init() {
     // Versiyon Kontrolü (Zorunlu Güncelleme)
-    const CURRENT_VERSION = "2.6";
+    const CURRENT_VERSION = "2.7";
     if (storage.get('app_version') !== CURRENT_VERSION) {
         storage.set('app_version', CURRENT_VERSION);
         if ('serviceWorker' in navigator) {
@@ -1708,13 +1708,67 @@ function renderAIAssistant() {
             <div id="ai-result-box" class="hidden" style="background: var(--bg-color); border: 1px solid var(--secondary-color); border-radius: 12px; padding: 15px; font-size: 13px; color: var(--text-color); line-height: 1.5;">
                 <div id="ai-loading" class="hidden" style="text-align: center; color: var(--primary-dark);">
                     <i class="ph ph-spinner ph-spin" style="font-size: 24px; margin-bottom: 10px;"></i>
-                    <p>Yapay Zeka Analiz Ediyor...</p>
+                    <p id="ai-loading-text">Yapay Zeka Analiz Ediyor...</p>
                 </div>
                 <div id="ai-response-text" class="hidden"></div>
             </div>
         </div>
+
+        <!-- Manuel Ekleme Kartı -->
+        <div class="card manual-add-card" style="margin-bottom: 30px;">
+            <div class="manual-add-header" onclick="window.toggleManualAdd()" style="cursor:pointer; display:flex; justify-content:space-between; align-items:center;">
+                <h3 style="font-size:15px; font-weight:600; margin:0; display:flex; align-items:center; gap:8px; color:var(--text-color);">
+                    <i class="ph ph-keyboard" style="color:var(--primary-dark)"></i> Elle / Manuel Öğün Ekle
+                </h3>
+                <i class="ph ph-caret-down" id="manual-caret" style="font-size:14px; color:var(--text-light); transition: transform 0.3s"></i>
+            </div>
+            <div id="manual-add-details" class="hidden" style="margin-top: 15px; border-top: 1px solid rgba(0,0,0,0.05); padding-top: 15px;">
+                <div class="input-group">
+                    <label>Ne yediniz? / İçecek</label>
+                    <input type="text" id="manual-label" placeholder="Örn: 1 dilim yaş pasta veya Simit" class="input-minimal" style="width:100%;">
+                </div>
+                <div class="input-group">
+                    <label>Kalori (Kcal)</label>
+                    <input type="number" id="manual-kcal" placeholder="Örn: 350" class="input-minimal" style="width:100%;">
+                </div>
+                <button class="btn-primary" onclick="window.submitManualAdd()" style="background:var(--primary-color); border-color:var(--primary-color); width:100%; margin-top:5px;">
+                    <i class="ph ph-plus-circle"></i> Günlüğe Ekle
+                </button>
+            </div>
+        </div>
     `;
 }
+
+window.toggleManualAdd = () => {
+    const details = document.getElementById('manual-add-details');
+    const caret = document.getElementById('manual-caret');
+    if (details && caret) {
+        details.classList.toggle('hidden');
+        if (details.classList.contains('hidden')) {
+            caret.style.transform = 'rotate(0deg)';
+        } else {
+            caret.style.transform = 'rotate(180deg)';
+        }
+    }
+};
+
+window.submitManualAdd = () => {
+    const label = document.getElementById('manual-label').value.trim();
+    const kcalVal = document.getElementById('manual-kcal').value.trim();
+    if (!label) {
+        alert("Lütfen ne yediğinizi yazın.");
+        return;
+    }
+    const kcal = kcalVal ? parseInt(kcalVal) : 200;
+    if (isNaN(kcal) || kcal < 0) {
+        alert("Lütfen geçerli bir kalori değeri girin.");
+        return;
+    }
+    window.addToDailyIntake(kcal, label);
+    document.getElementById('manual-label').value = '';
+    document.getElementById('manual-kcal').value = '';
+    window.toggleManualAdd();
+};
 
 window.currentAIImageBase64 = null;
 
@@ -1764,16 +1818,61 @@ window.clearAIImage = () => {
     document.getElementById('ai-image-upload').value = '';
 };
 
-// Groq API
-const DEFAULT_GROQ_API_KEY = atob("Z3NrX3o3cFZaS2pSb0RTMk43OWx3RjU2V0dkeWIzRllCVWRVVmsxM0Y0dkxseVVTbXBSZnlmTjM=");
-const GROQ_VISION_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct";
-const GROQ_TEXT_MODEL = "llama-3.3-70b-versatile";
+// OpenRouter API
+const DEFAULT_OPENROUTER_API_KEY = "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";
+const OPENROUTER_MODEL = "google/gemini-2.5-flash";
+
+window.showManualFormOnError = (inputText, errorMsg) => {
+    const responseTextEl = document.getElementById('ai-response-text');
+    responseTextEl.classList.remove('hidden');
+    
+    const guessedLabel = inputText ? (inputText.length > 30 ? inputText.substring(0, 30) + "..." : inputText) : "";
+    
+    responseTextEl.innerHTML = `
+        <div style="color:#ef5350; margin-bottom:15px; font-size:12.5px; line-height:1.4;">
+            <i class="ph ph-warning-circle" style="font-size:18px; vertical-align:middle; margin-right:5px;"></i>
+            <span><strong>Bağlantı Hatası:</strong> ${errorMsg}</span>
+        </div>
+        <div style="background:rgba(255, 152, 0, 0.05); border: 1px solid rgba(255, 152, 0, 0.2); padding:15px; border-radius:12px; margin-top:10px;">
+            <h4 style="color:#ff9800; font-size:13px; font-weight:600; margin-bottom:10px; display:flex; align-items:center; gap:6px;">
+                <i class="ph ph-keyboard"></i> Yapay Zeka Hata Verdi, Elle Ekle:
+            </h4>
+            <div class="input-group" style="margin-bottom:10px;">
+                <label style="font-size:11px; margin-bottom:3px;">Yiyecek Adı</label>
+                <input type="text" id="error-manual-label" value="${guessedLabel.replace(/"/g, '&quot;')}" class="input-minimal" style="width:100%; padding:8px 12px; font-size:13px !important;" placeholder="Örn: 1 dilim börek">
+            </div>
+            <div class="input-group" style="margin-bottom:12px;">
+                <label style="font-size:11px; margin-bottom:3px;">Kalori (kcal)</label>
+                <input type="number" id="error-manual-kcal" value="250" class="input-minimal" style="width:100%; padding:8px 12px; font-size:13px !important;">
+            </div>
+            <button class="btn-primary-small" onclick="window.submitErrorManualAdd()" style="background:#ff9800; border:none; width:100%; justify-content:center; color:white; height:38px; border-radius:10px;">
+                <i class="ph ph-plus-circle"></i> Günlüğüme Ekle
+            </button>
+        </div>
+    `;
+};
+
+window.submitErrorManualAdd = () => {
+    const label = document.getElementById('error-manual-label').value.trim();
+    const kcalVal = document.getElementById('error-manual-kcal').value.trim();
+    if (!label) {
+        alert("Lütfen yiyecek adını girin.");
+        return;
+    }
+    const kcal = kcalVal ? parseInt(kcalVal) : 250;
+    if (isNaN(kcal) || kcal < 0) {
+        alert("Lütfen geçerli bir kalori değeri girin.");
+        return;
+    }
+    window.addToDailyIntake(kcal, label);
+    document.getElementById('ai-result-box').classList.add('hidden');
+};
 
 window.askAI = async () => {
-    const apiKey = DEFAULT_GROQ_API_KEY;
+    const apiKey = DEFAULT_OPENROUTER_API_KEY;
     
-    if (!apiKey || apiKey.includes("YAPISTIR")) {
-        alert('Lütfen geçerli bir Groq API anahtarı ekleyin.');
+    if (!apiKey) {
+        alert('Lütfen geçerli bir OpenRouter API anahtarı ekleyin.');
         return;
     }
 
@@ -1785,18 +1884,21 @@ window.askAI = async () => {
         return;
     }
 
-    document.getElementById('ai-result-box').classList.remove('hidden');
-    document.getElementById('ai-loading').classList.remove('hidden');
-    document.getElementById('ai-response-text').classList.add('hidden');
-    
-    try {
+    const resultBox = document.getElementById('ai-result-box');
+    const loadingEl = document.getElementById('ai-loading');
+    const loadingTextEl = document.getElementById('ai-loading-text');
+    const responseTextEl = document.getElementById('ai-response-text');
+
+    resultBox.classList.remove('hidden');
+    loadingEl.classList.remove('hidden');
+    responseTextEl.classList.add('hidden');
+    loadingTextEl.innerText = "Yapay Zeka Analiz Ediyor...";
+
+    const makeRequest = async (useImage) => {
         let systemPrompt = "Sen uzman bir diyetisyen yapay zekasısın. Görevin, kullanıcının yediği yemeği/içeceği analiz etmek. Eğer bir fotoğraf varsa onu tanı, yoksa metne odaklan. Tahmini kalorisini söyle ve diyete uygun olup olmadığını kısaca, samimi ve Türkçe bir şekilde anlat. (Maksimum 3-4 cümle) ÖNEMLİ: Cevabının en başına, tek satır olarak ve köşeli parantez içinde, yemeğin/içeceğin düzeltilmiş ve tam Türkçe adını ve yanına tek bir sayı olarak net tahmini kalorisini yaz (aralık belirtme, tek bir ortalama sayı yaz). Örnek: [Haşlanmış Yumurta - 75 kcal] veya [Mercimek Çorbası - 120 kcal]. Bu satırdan sonra açıklamana devam et.";
         
-        const model = imageBase64 ? GROQ_VISION_MODEL : GROQ_TEXT_MODEL;
-
         let messages = [];
-        if (imageBase64) {
-            // Groq Vision handles array of content (text + image) best in the user role
+        if (useImage && imageBase64) {
             messages.push({
                 role: "user",
                 content: [
@@ -1805,47 +1907,70 @@ window.askAI = async () => {
                 ]
             });
         } else {
-            // Standard text-only chat
             messages.push({ role: "system", content: systemPrompt });
             messages.push({ role: "user", content: text });
         }
 
-        const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        const headers = {
+            "Authorization": `Bearer ${apiKey}`,
+            "Content-Type": "application/json",
+            "HTTP-Referer": "https://github.com/fatihpatir/diyetim",
+            "X-Title": "Diyet Asistanim"
+        };
+
+        const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
             method: "POST",
-            headers: {
-                "Authorization": `Bearer ${apiKey}`,
-                "Content-Type": "application/json"
-            },
+            headers: headers,
             body: JSON.stringify({
-                model: model,
+                model: OPENROUTER_MODEL,
                 messages: messages,
                 temperature: 0.5,
-                max_tokens: 512,
-                top_p: 1
+                max_tokens: 512
             })
         });
 
-        const data = await response.json();
+        if (!response.ok) {
+            const errData = await response.json().catch(() => ({}));
+            throw new Error(errData.error?.message || `HTTP ${response.status}`);
+        }
+
+        return await response.json();
+    };
+
+    try {
+        let data;
+        let visualError = false;
+
+        if (imageBase64) {
+            try {
+                data = await makeRequest(true);
+            } catch (err) {
+                console.warn("Visual analysis failed, falling back to text-only:", err);
+                if (text) {
+                    visualError = true;
+                    loadingTextEl.innerText = "Görsel analizi yapılamadı. Sadece metin analiz ediliyor...";
+                    data = await makeRequest(false);
+                } else {
+                    throw err;
+                }
+            }
+        } else {
+            data = await makeRequest(false);
+        }
         
-        document.getElementById('ai-loading').classList.add('hidden');
-        const responseTextEl = document.getElementById('ai-response-text');
+        loadingEl.classList.add('hidden');
         responseTextEl.classList.remove('hidden');
 
-        if (!response.ok || data.error) {
-            const msg = data.error?.message || `HTTP ${response.status}`;
-            const errorCode = data.error?.code || "";
-            responseTextEl.innerHTML = `<p style="color:#ef5350"><i class="ph ph-warning-circle"></i> API Hatası: ${msg} (${errorCode})</p>`;
-        } else if (data.choices?.[0]?.message?.content) {
+        if (data.choices?.[0]?.message?.content) {
             const aiText = data.choices[0].message.content;
             const formattedHtml = aiText.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br>');
             
-            // Yapay zekanın cevabından yemek adını ve kalorisini çıkar ([Ad - X kcal] formatında)
             let foodName = "AI Analizi";
             let kcal = 200;
 
             const bracketMatch = aiText.match(/^\[(.+?)\]/);
             if (bracketMatch) {
-                const content = bracketMatch[1].trim(); // Örn: "İskender Kebap - 500-600 kcal" veya "İskender Kebap - 550 kcal"
+                const content = bracketMatch[1].trim();
                 const lastHyphenIndex = content.lastIndexOf('-');
                 if (lastHyphenIndex !== -1) {
                     const possibleKcalPart = content.substring(lastHyphenIndex + 1).trim();
@@ -1864,7 +1989,6 @@ window.askAI = async () => {
                         }
                     } else {
                         foodName = content;
-                        // Köşeli parantez içinde kalori bulunamadıysa metnin geneline bak
                         const rangeMatch = aiText.match(/(\d+)\s*[-–]\s*(\d+)\s*(?:kcal|kalori|cal|kal)/i) || aiText.match(/(\d+)\s*[-–]\s*(\d+)/);
                         if (rangeMatch) {
                             const val1 = parseInt(rangeMatch[1]);
@@ -1877,7 +2001,6 @@ window.askAI = async () => {
                     }
                 } else {
                     foodName = content;
-                    // Köşeli parantez içinde kalori bulunamadıysa metnin geneline bak
                     const rangeMatch = aiText.match(/(\d+)\s*[-–]\s*(\d+)\s*(?:kcal|kalori|cal|kal)/i) || aiText.match(/(\d+)\s*[-–]\s*(\d+)/);
                     if (rangeMatch) {
                         const val1 = parseInt(rangeMatch[1]);
@@ -1901,16 +2024,18 @@ window.askAI = async () => {
                 }
             }
             
-            // Başlık satırını cevap metninden gizle
             const cleanedHtml = formattedHtml.replace(/^\[.+?\]\s*<br>/i, '').replace(/^\[.+?\]\s*/i, '');
-
-            // HTML attribute veya JS kodunun kırılmaması için yemek adındaki tırnakları temizle
             const jsFoodName = foodName.replace(/['"‘“’`]/g, '');
+
+            const fallbackNotice = visualError 
+                ? `<div style="background:rgba(255, 152, 0, 0.08); border: 1px solid rgba(255, 152, 0, 0.2); padding:8px 12px; border-radius:8px; font-size:11px; color:#e65100; margin-bottom:12px; display:flex; align-items:center; gap:5px;"><i class="ph ph-warning-circle"></i> Görsel analizi yapılamadı. Sadece metin analiz edildi.</div>` 
+                : '';
 
             responseTextEl.innerHTML = `
                 <div style="display:flex; gap:10px; align-items:flex-start;">
                     <i class="ph ph-sparkle" style="color:#ab47bc; font-size:20px; flex-shrink:0;"></i>
                     <div style="width:100%">
+                        ${fallbackNotice}
                         <div style="font-size:12px; font-weight:700; color:#ab47bc; margin-bottom:8px; letter-spacing:0.3px">📌 ${foodName}</div>
                         ${cleanedHtml}
                         <div style="margin-top:15px; border-top:1px solid rgba(0,0,0,0.05); padding-top:10px">
@@ -1926,9 +2051,8 @@ window.askAI = async () => {
         }
 
     } catch (error) {
-        document.getElementById('ai-loading').classList.add('hidden');
-        document.getElementById('ai-response-text').classList.remove('hidden');
-        document.getElementById('ai-response-text').innerHTML = `<p style="color:#ef5350"><i class="ph ph-warning-circle"></i> Gönderim sırasında bir hata oluştu. (${error.message})</p>`;
+        loadingEl.classList.add('hidden');
+        window.showManualFormOnError(text, error.message);
     }
 };
 

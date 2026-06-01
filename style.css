@@ -1392,3 +1392,23 @@ skinny-tag {
 .alt-badge i {
     font-size: 10px;
 }
+
+/* --- AI Assistant Custom Additions --- */
+.manual-add-card {
+    border-left: 4px solid var(--primary-color) !important;
+    background: linear-gradient(135deg, var(--white) 0%, var(--bg-color) 100%) !important;
+    transition: var(--transition);
+}
+
+.manual-add-card:hover {
+    border-left-color: var(--primary-dark) !important;
+}
+
+.manual-add-header h3 {
+    transition: color 0.3s;
+}
+
+.manual-add-card:hover .manual-add-header h3 {
+    color: var(--primary-dark);
+}
+
