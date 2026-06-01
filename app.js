@@ -1,3 +1,6 @@
+// OneSignal Uygulama Kimliği (Lütfen buraya kendi OneSignal App ID değerinizi yazın)
+const ONESIGNAL_APP_ID = ""; // Buraya kendi OneSignal App ID değerinizi girdiğinizde sistem otomatik olarak Web Push moduna yükseltilir. Boş bırakırsanız PWA Yerel Bildirim modunda çalışır.
+
 // Diet Data - 17 Ekim Flexible List
 const DIET_17_EKIM = {
     title: "Diyet Listem",
@@ -425,7 +428,7 @@ const storage = {
 // State Management
 const state = {
     currentTab: 'dashboard',
-    user: storage.get('diyet_user', { name: '', age: '', height: '', weight: '', targetWeight: '', gender: 'female', theme: 'theme-default', geminiApiKey: '', groqApiKey: '', openRouterApiKey: '' }),
+    user: storage.get('diyet_user', { name: '', age: '', height: '', weight: '', targetWeight: '', gender: 'female', theme: 'theme-default', geminiApiKey: '', groqApiKey: '', openRouterApiKey: '', waterReminder: false }),
     water: storage.get('diyet_water', { date: new Date().toLocaleDateString(), count: 0 }),
     logs: storage.get('diyet_logs', []),
     daily: storage.get('diyet_daily', { date: new Date().toLocaleDateString(), intake: [], steps: 0 })
@@ -480,9 +483,203 @@ window.addEventListener('beforeinstallprompt', (e) => {
 const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
 const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
 
+// --- Water Reminder Notification Yöneticisi ---
+const WaterReminderManager = {
+    // Motive edici bildirim mesajları havuzu
+    messages: [
+        "Su içmeyi unutma! 💧 Sağlıklı bir gün için büyük bir bardak su alalım.",
+        "Vücudunu susuz bırakma! 💧 Şimdi taze bir bardak su içme zamanı.",
+        "Metabolizmanı canlandırma zamanı! Bir bardak soğuk su içmeye ne dersin? 💧",
+        "Diyetinin en büyük dostu sudur. Hadi suyunu yudumla! 💧",
+        "Hedefine bir adım daha yaklaşmak için taze bir bardak su iç! 💧",
+        "Kendine bir iyilik yap ve şimdi kocaman bir bardak su iç! 💧",
+        "Su saati geldi! 💧 Sağlıklı ve zinde hissetmek için suyunu ihmal etme."
+    ],
+
+    // OneSignal Push Entegrasyonunu Başlatır (Eğer geçerli bir ID varsa)
+    initOneSignal: () => {
+        if (ONESIGNAL_APP_ID && ONESIGNAL_APP_ID !== "SİZİN_ONESIGNAL_APP_ID_DEĞERİNİZ") {
+            window.OneSignalDeferred = window.OneSignalDeferred || [];
+            window.OneSignalDeferred.push(async function(OneSignal) {
+                try {
+                    await OneSignal.init({
+                        appId: ONESIGNAL_APP_ID,
+                        allowLocalhostAsSecureOrigin: true
+                    });
+                    console.log("OneSignal Web Push başarıyla başlatıldı.");
+                    
+                    // OneSignal üzerinden kullanıcının aktif abonelik durumunu oku ve eşitle
+                    const isSubscribed = OneSignal.User.PushSubscription.optedIn;
+                    state.user.waterReminder = isSubscribed;
+                    storage.set('diyet_user', state.user);
+                    
+                    // Eğer arayüzde toggle varsa durumunu güncelle
+                    const toggleEl = document.getElementById('water-reminder-toggle');
+                    if (toggleEl) toggleEl.checked = isSubscribed;
+                } catch (err) {
+                    console.warn("OneSignal başlatılamadı (Büyük ihtimalle geçersiz App ID):", err);
+                }
+            });
+        }
+    },
+
+    // Bildirim izin durumu kontrolü
+    checkPermissionStatus: () => {
+        if (!('Notification' in window)) return 'unsupported';
+        return Notification.permission;
+    },
+
+    // Bildirim izni isteme ve aktif etme (Standart PWA modunda)
+    requestPermission: async (toggleEl) => {
+        if (!('Notification' in window)) {
+            alert("Maalesef tarayıcınız anlık bildirimleri desteklemiyor.");
+            if (toggleEl) toggleEl.checked = false;
+            return false;
+        }
+
+        try {
+            const permission = await Notification.requestPermission();
+            if (permission === 'granted') {
+                state.user.waterReminder = true;
+                storage.set('diyet_user', state.user);
+                
+                const userName = state.user.name ? `${state.user.name}, ` : "";
+                WaterReminderManager.sendNotification(
+                    "Hatırlatıcılarınız Aktif! 💧",
+                    `Harika ${userName}izin onaylandı! Artık size sabah 08:00 ile akşam 22:00 arasında her saat başı su içme hatırlatmaları göndereceğim. Sağlıklı günler!`
+                );
+                
+                if (state.currentTab === 'profile') renderProfile();
+                return true;
+            } else {
+                state.user.waterReminder = false;
+                storage.set('diyet_user', state.user);
+                if (toggleEl) toggleEl.checked = false;
+                
+                if (permission === 'denied') {
+                    WaterReminderManager.showPermissionBlockedModal();
+                }
+                return false;
+            }
+        } catch (e) {
+            console.error("Bildirim izni istenirken hata oluştu:", e);
+            return false;
+        }
+    },
+
+    // Bildirim engellendiğinde rehber modalı gösterme
+    showPermissionBlockedModal: () => {
+        modalBody.innerHTML = `
+            <div style="padding: 10px; text-align: center;">
+                <div style="font-size:50px; color:#ef5350; margin-bottom:15px;"><i class="ph ph-bell-slash"></i></div>
+                <h2 style="color:#ef5350; margin-bottom:10px;">Bildirimler Engellenmiş</h2>
+                <p style="font-size: 13.5px; line-height: 1.5; color: var(--text-color); margin-bottom: 20px;">
+                    Tarayıcınızda bu uygulamanın bildirim izinleri engellenmiş görünüyor. Hatırlatıcıları alabilmek için lütfen tarayıcı adres barındaki <strong>kilit (site ayarları) simgesine</strong> tıklayarak bildirim izinlerini <strong>"İzin Ver"</strong> olarak güncelleyin.
+                </p>
+                <button class="btn-primary" onclick="document.getElementById('modal-container').classList.add('hidden')" style="background:#ef5350; border-color:#ef5350;">Anladım</button>
+            </div>
+        `;
+        modalContainer.classList.remove('hidden');
+    },
+
+    // Bildirim gönderme mantığı (Service worker odaklı veya local fallback)
+    sendNotification: (title, body) => {
+        if (!('Notification' in window) || Notification.permission !== 'granted') return;
+
+        const options = {
+            body: body,
+            icon: 'icon.png',
+            badge: 'icon.png',
+            vibrate: [200, 100, 200],
+            tag: 'water-reminder',
+            renotify: true
+        };
+
+        if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+            navigator.serviceWorker.ready.then(reg => {
+                reg.showNotification(title, options);
+            }).catch(() => {
+                new Notification(title, options);
+            });
+        } else {
+            new Notification(title, options);
+        }
+    },
+
+    // Saatlik kontrol algoritması (Sadece Standart PWA modunda çalışır, OneSignal kendisi arka plandan atar)
+    checkAndSendHourlyWaterReminder: () => {
+        // Eğer OneSignal devredeyse onun kendi arka plan push sistemi vardır, client-side check çalışmasın
+        if (ONESIGNAL_APP_ID && ONESIGNAL_APP_ID !== "SİZİN_ONESIGNAL_APP_ID_DEĞERİNİZ") return;
+
+        if (!state.user.waterReminder) return;
+        if (Notification.permission !== 'granted') return;
+
+        const now = new Date();
+        const currentHour = now.getHours();
+
+        // Sadece Sabah 08:00 ile Akşam 22:00 arasında çalış
+        if (currentHour >= 8 && currentHour <= 22) {
+            const lastSentHour = storage.get('last_sent_water_hour', -1);
+            
+            if (lastSentHour !== currentHour) {
+                const randomIndex = Math.floor(Math.random() * WaterReminderManager.messages.length);
+                const msg = WaterReminderManager.messages[randomIndex];
+
+                WaterReminderManager.sendNotification("Su İçme Zamanı! 💧", msg);
+                storage.set('last_sent_water_hour', currentHour);
+                console.log(`Su hatırlatıcı bildirimi saat ${currentHour}:00 için gönderildi.`);
+            }
+        }
+    }
+};
+
+window.handleWaterReminderToggle = async (checkbox) => {
+    if (ONESIGNAL_APP_ID && ONESIGNAL_APP_ID !== "SİZİN_ONESIGNAL_APP_ID_DEĞERİNİZ") {
+        // OneSignal Web Push Modu
+        if (typeof OneSignal !== 'undefined') {
+            if (checkbox.checked) {
+                OneSignal.User.PushSubscription.optIn();
+                state.user.waterReminder = true;
+                storage.set('diyet_user', state.user);
+                console.log("OneSignal push aboneliği açılıyor...");
+            } else {
+                OneSignal.User.PushSubscription.optOut();
+                state.user.waterReminder = false;
+                storage.set('diyet_user', state.user);
+                console.log("OneSignal push aboneliği kapatılıyor...");
+            }
+        } else {
+            // OneSignal henüz yüklenmediyse kuyruğa ekle
+            window.OneSignalDeferred = window.OneSignalDeferred || [];
+            window.OneSignalDeferred.push(function(OneSignal) {
+                if (checkbox.checked) {
+                    OneSignal.User.PushSubscription.optIn();
+                    state.user.waterReminder = true;
+                } else {
+                    OneSignal.User.PushSubscription.optOut();
+                    state.user.waterReminder = false;
+                }
+                storage.set('diyet_user', state.user);
+            });
+        }
+    } else {
+        // Standart PWA Bildirim Modu
+        if (checkbox.checked) {
+            const success = await WaterReminderManager.requestPermission(checkbox);
+            if (!success) {
+                checkbox.checked = false;
+            }
+        } else {
+            state.user.waterReminder = false;
+            storage.set('diyet_user', state.user);
+            console.log("Su hatırlatıcısı kapatıldı.");
+        }
+    }
+};
+
 function init() {
     // Versiyon Kontrolü (Zorunlu Güncelleme)
-    const CURRENT_VERSION = "2.9";
+    const CURRENT_VERSION = "3.0";
     if (storage.get('app_version') !== CURRENT_VERSION) {
         storage.set('app_version', CURRENT_VERSION);
         if ('serviceWorker' in navigator) {
@@ -508,6 +705,9 @@ function init() {
     
     setupEventListeners();
     registerServiceWorker();
+    
+    // OneSignal'ı başlat (Eğer geçerli bir ID varsa)
+    WaterReminderManager.initOneSignal();
 
     // Show install button for iOS if not already standalone
     const installBtn = document.getElementById('install-btn');
@@ -533,6 +733,14 @@ function init() {
     modalContainer.addEventListener('click', (e) => {
         if (e.target === modalContainer) modalContainer.classList.add('hidden');
     });
+
+    // Su hatırlatıcı döngüsünü başlat
+    if (state.user.waterReminder) {
+        WaterReminderManager.checkAndSendHourlyWaterReminder();
+    }
+    setInterval(() => {
+        WaterReminderManager.checkAndSendHourlyWaterReminder();
+    }, 30000); // Her 30 saniyede bir kontrol et
 }
 
 function handleInstall() {
@@ -1450,6 +1658,31 @@ function renderProfile() {
                 <label>Hedef Kilo (kg)</label>
                 <input type="number" id="user-target" value="${state.user.targetWeight}" placeholder="70">
             </div>
+        </div>
+
+        <!-- Hatırlatıcı Bildirimleri Kartı -->
+        <div class="card notification-settings-card">
+            <h2><i class="ph ph-bell"></i> Hatırlatıcı Bildirimleri</h2>
+            <div class="toggle-switch-container">
+                <div class="toggle-switch-info">
+                    <span class="toggle-switch-title">
+                        <i class="ph ph-drop-fill" style="color: #29b6f6;"></i> Saatlik Su Hatırlatıcısı
+                    </span>
+                    <span class="toggle-switch-desc">
+                        Sabah 08:00 ile akşam 22:00 arasında her saat başı su içmeni hatırlatır.
+                    </span>
+                </div>
+                <label class="toggle-switch">
+                    <input type="checkbox" id="water-reminder-toggle" ${state.user.waterReminder ? 'checked' : ''} onchange="window.handleWaterReminderToggle(this)">
+                    <span class="toggle-slider"></span>
+                </label>
+            </div>
+            ${('Notification' in window) && Notification.permission === 'denied' ? `
+                <div class="blocked-notification-warning">
+                    <i class="ph ph-warning-circle"></i>
+                    <span>Tarayıcınızda bildirim izinleri engellenmiş! Hatırlatıcıları almak için adres çubuğundaki kilit simgesinden izin verin.</span>
+                </div>
+            ` : ''}
         </div>
 
         <div class="card" style="text-align:center">
