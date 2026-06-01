@@ -482,7 +482,7 @@ const isStandalone = window.matchMedia('(display-mode: standalone)').matches || 
 
 function init() {
     // Versiyon Kontrolü (Zorunlu Güncelleme)
-    const CURRENT_VERSION = "2.7";
+    const CURRENT_VERSION = "2.8";
     if (storage.get('app_version') !== CURRENT_VERSION) {
         storage.set('app_version', CURRENT_VERSION);
         if ('serviceWorker' in navigator) {
@@ -1819,7 +1819,7 @@ window.clearAIImage = () => {
 };
 
 // OpenRouter API
-const DEFAULT_OPENROUTER_API_KEY = "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";
+const DEFAULT_OPENROUTER_API_KEY = "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";
 const OPENROUTER_MODEL = "google/gemini-2.5-flash";
 
 window.showManualFormOnError = (inputText, errorMsg) => {
