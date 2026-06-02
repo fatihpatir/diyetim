@@ -1844,14 +1844,6 @@ function renderProfile() {
         
         <button class="btn-primary" id="save-profile" style="margin-bottom: 12px;">Değişiklikleri Kaydet</button>
         
-        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin-bottom:12px">
-            <button class="btn-primary-small" onclick="window.backupData()" disabled style="background:var(--secondary-color); color:var(--text-color); border:none; padding:12px; width:100%; border-radius:12px; opacity:0.5; cursor:not-allowed;">
-                <i class="ph ph-export"></i> Yedekle
-            </button>
-            <button class="btn-primary-small" onclick="window.restoreData()" disabled style="background:var(--secondary-color); color:var(--text-color); border:none; padding:12px; width:100%; border-radius:12px; opacity:0.5; cursor:not-allowed;">
-                <i class="ph ph-import"></i> Geri Yükle
-            </button>
-        </div>
 
         <button class="btn-primary" onclick="window.resetEverything()" style="background:#ef5350; border-color:#ef5350; margin-bottom: 20px;">
             <i class="ph ph-trash"></i> Tüm Verileri Sıfırla
