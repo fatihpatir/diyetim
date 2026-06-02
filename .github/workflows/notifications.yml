@@ -1,0 +1,123 @@
+name: Diyetim Bildirimleri
+
+on:
+  schedule:
+    # ── Türkiye saati UTC+3 ──────────────────────────
+    # 07:00 TR → Kahvaltı
+    - cron: '0 4 * * *'
+    # 08:00 TR → Su
+    - cron: '0 5 * * *'
+    # 10:00 TR → Su
+    - cron: '0 7 * * *'
+    # 12:00 TR → Öğle Yemeği
+    - cron: '0 9 * * *'
+    # 12:30 TR → Yürüyüş
+    - cron: '30 9 * * *'
+    # 14:00 TR → Su
+    - cron: '0 11 * * *'
+    # 16:00 TR → Su
+    - cron: '0 13 * * *'
+    # 18:00 TR → Akşam Yemeği
+    - cron: '0 15 * * *'
+    # 20:00 TR → Su
+    - cron: '0 17 * * *'
+    # 21:00 TR → Gece Arası
+    - cron: '0 18 * * *'
+    # 22:00 TR → Su
+    - cron: '0 19 * * *'
+
+  # Manuel test için
+  workflow_dispatch:
+
+jobs:
+  bildirim-gonder:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Bildirimi Belirle ve Gönder
+        env:
+          ONESIGNAL_APP_ID: ${{ secrets.ONESIGNAL_APP_ID }}
+          ONESIGNAL_API_KEY: ${{ secrets.ONESIGNAL_REST_API_KEY }}
+        run: |
+          HOUR=$(date -u +%H)
+          MINUTE=$(date -u +%M)
+
+          echo "UTC Saat: $HOUR:$MINUTE"
+
+          TITLE=""
+          MESSAGE=""
+
+          # 04:00 UTC = 07:00 TR → Kahvaltı
+          if [ "$HOUR" = "04" ] && [ "$MINUTE" = "00" ]; then
+            TITLE="Kahvaltı Vakti! 🍳"
+            MESSAGE="Güne zinde başlamak için kahvaltı saati! Yumurtan ve ekmeğin hazır mı?"
+
+          # 05:00 UTC = 08:00 TR → Su
+          elif [ "$HOUR" = "05" ] && [ "$MINUTE" = "00" ]; then
+            TITLE="Su İçme Zamanı! 💧"
+            MESSAGE="Güne bir bardak su ile başla. Metabolizmanı harekete geçir!"
+
+          # 07:00 UTC = 10:00 TR → Su
+          elif [ "$HOUR" = "07" ] && [ "$MINUTE" = "00" ]; then
+            TITLE="Su İçme Zamanı! 💧"
+            MESSAGE="Vücudunu susuz bırakma! Şimdi taze bir bardak su içme vakti."
+
+          # 09:00 UTC = 12:00 TR → Öğle Yemeği
+          elif [ "$HOUR" = "09" ] && [ "$MINUTE" = "00" ]; then
+            TITLE="Öğle Yemeği Vakti! 🥗"
+            MESSAGE="Öğle yemeği saati geldi! Sebze yemeğin ve yoğurdun seni bekliyor."
+
+          # 09:30 UTC = 12:30 TR → Yürüyüş
+          elif [ "$HOUR" = "09" ] && [ "$MINUTE" = "30" ]; then
+            TITLE="Yürüyüş & Spor Zamanı! 🏃"
+            MESSAGE="Bugün en az 30 dakika yürüyüş yapmayı unutma! Vücudunu hareket ettirmek sana harika hissettirecek. 💪"
+
+          # 11:00 UTC = 14:00 TR → Su
+          elif [ "$HOUR" = "11" ] && [ "$MINUTE" = "00" ]; then
+            TITLE="Su İçme Zamanı! 💧"
+            MESSAGE="Öğleden sonra yorgunluğuna izin verme! Bir bardak su ile kendini tazele."
+
+          # 13:00 UTC = 16:00 TR → Su
+          elif [ "$HOUR" = "13" ] && [ "$MINUTE" = "00" ]; then
+            TITLE="Su İçme Zamanı! 💧"
+            MESSAGE="Diyetinin en büyük dostu sudur. Hadi suyunu yudumla! 💧"
+
+          # 15:00 UTC = 18:00 TR → Akşam Yemeği
+          elif [ "$HOUR" = "15" ] && [ "$MINUTE" = "00" ]; then
+            TITLE="Akşam Yemeği Vakti! 🍗"
+            MESSAGE="Akşam yemeği saati! Protein ağırlıklı öğününle gününü harika kapat."
+
+          # 17:00 UTC = 20:00 TR → Su
+          elif [ "$HOUR" = "17" ] && [ "$MINUTE" = "00" ]; then
+            TITLE="Su İçme Zamanı! 💧"
+            MESSAGE="Akşam suyunu ihmal etme! Hedefine bir adım daha yaklaşmak için bir bardak su iç."
+
+          # 18:00 UTC = 21:00 TR → Gece Arası
+          elif [ "$HOUR" = "18" ] && [ "$MINUTE" = "00" ]; then
+            TITLE="Gece Arası Vakti! 🥛"
+            MESSAGE="Günün son hafif öğünü! Yulaflı sütün ve tarçınlı muzun hazır mı?"
+
+          # 19:00 UTC = 22:00 TR → Su
+          elif [ "$HOUR" = "19" ] && [ "$MINUTE" = "00" ]; then
+            TITLE="Son Su Hatırlatması! 💧"
+            MESSAGE="Günün son su molası. Kendine iyi bak, yarın da sağlıklı bir gün dilerim! 🌙"
+          fi
+
+          # Eğer bildirim tanımlandıysa gönder
+          if [ -n "$TITLE" ]; then
+            echo "Gönderiliyor: $TITLE"
+            curl -s -X POST "https://onesignal.com/api/v1/notifications" \
+              -H "Authorization: Basic $ONESIGNAL_API_KEY" \
+              -H "Content-Type: application/json" \
+              -d "{
+                \"app_id\": \"$ONESIGNAL_APP_ID\",
+                \"included_segments\": [\"All\"],
+                \"headings\": {\"tr\": \"$TITLE\", \"en\": \"$TITLE\"},
+                \"contents\": {\"tr\": \"$MESSAGE\", \"en\": \"$MESSAGE\"},
+                \"small_icon\": \"ic_stat_onesignal_default\",
+                \"android_accent_color\": \"FFb8d8be\"
+              }"
+            echo ""
+            echo "Bildirim gönderildi!"
+          else
+            echo "Bu saat için bildirim tanımlı değil. (UTC: $HOUR:$MINUTE)"
+          fi
