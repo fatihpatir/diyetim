@@ -930,10 +930,18 @@ const WaterReminderManager = {
 
             // Önümüzdeki 7 gün için belirlenen saat ve aralıkta bildirimleri zamanla
             for (let day = 0; day < 7; day++) {
-                for (let hour = startH; hour <= endH; hour += interval) {
+                const startMinutes = startH * 60;
+                const endMinutes = endH * 60;
+                const intervalMinutes = interval * 60;
+
+                for (let m = startMinutes; m <= endMinutes; m += intervalMinutes) {
                     const target = new Date();
                     target.setDate(now.getDate() + day);
-                    target.setHours(hour, 0, 0, 0);
+                    
+                    const targetHour = Math.floor(m / 60);
+                    const targetMin = Math.round(m % 60);
+                    
+                    target.setHours(targetHour, targetMin, 0, 0);
 
                     // Geçmiş saatleri atla
                     if (target <= now) continue;
@@ -966,9 +974,10 @@ const WaterReminderManager = {
         window.OneSignalDeferred.push(async (OneSignal) => {
             try {
                 const tags = {};
-                // Reset all hour tags first
+                // Reset all hour and halfhour tags first
                 for (let h = 0; h < 24; h++) {
                     tags[`hour_${h}`] = "false";
+                    tags[`halfhour_${h}`] = "false";
                 }
 
                 if (state.user.waterReminder) {
@@ -976,9 +985,19 @@ const WaterReminderManager = {
                     const endHour = state.user.notifEndHour !== undefined ? state.user.notifEndHour : 22;
                     const interval = state.user.notifInterval !== undefined ? state.user.notifInterval : 1;
 
-                    // Set active hours to true
-                    for (let h = startHour; h <= endHour; h += interval) {
-                        tags[`hour_${h}`] = "true";
+                    const startMinutes = startHour * 60;
+                    const endMinutes = endHour * 60;
+                    const intervalMinutes = interval * 60;
+
+                    for (let m = startMinutes; m <= endMinutes; m += intervalMinutes) {
+                        const targetHour = Math.floor(m / 60);
+                        const targetMin = Math.round(m % 60);
+
+                        if (targetMin === 0) {
+                            tags[`hour_${targetHour}`] = "true";
+                        } else if (targetMin === 30) {
+                            tags[`halfhour_${targetHour}`] = "true";
+                        }
                     }
                     tags["water_reminder"] = "true";
                 } else {
@@ -1009,6 +1028,12 @@ window.handleWaterReminderToggle = async (checkbox) => {
             await WaterReminderManager.syncOneSignalTags();
             await WaterReminderManager.scheduleLocalAlarms();
             showToast("Harika! Artık belirlediğiniz saatlerde size su ve motivasyon hatırlatıcıları göndereceğim! 💧", "success");
+            
+            // Immediate test notification
+            WaterReminderManager.sendNotification(
+                "Diyet Asistanım 💧",
+                "Harika! Bildirimleriniz aktif edildi. Artık belirlediğiniz saatlerde size su ve motivasyon hatırlatıcıları göndereceğim! İlk bardağınızı içmeyi unutmayın. 😉"
+            );
         } else {
             checkbox.checked = false;
             state.user.waterReminder = false;
@@ -2144,6 +2169,7 @@ function renderProfile() {
                 <div class="input-group" style="margin-bottom: 0;">
                     <label style="font-size: 11px;">Hatırlatma Sıklığı</label>
                     <select id="notif-interval" class="input-minimal" style="width: 100%; padding: 8px;" onchange="window.updateNotifSettings()">
+                        <option value="0.5" ${state.user.notifInterval === 0.5 ? 'selected' : ''}>Yarım saatte bir</option>
                         <option value="1" ${state.user.notifInterval === 1 ? 'selected' : ''}>Her saat başı</option>
                         <option value="2" ${state.user.notifInterval === 2 ? 'selected' : ''}>2 saatte bir</option>
                         <option value="3" ${state.user.notifInterval === 3 ? 'selected' : ''}>3 saatte bir</option>
@@ -2218,7 +2244,7 @@ window.handleAIAutoAddToggle = (checkbox) => {
 window.updateNotifSettings = async () => {
     const startHour = parseInt(document.getElementById('notif-start-hour').value);
     const endHour = parseInt(document.getElementById('notif-end-hour').value);
-    const interval = parseInt(document.getElementById('notif-interval').value);
+    const interval = parseFloat(document.getElementById('notif-interval').value);
     
     if (startHour >= endHour) {
         showToast('Başlangıç saati bitiş saatinden önce olmalıdır!', 'warning');
