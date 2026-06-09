@@ -2186,22 +2186,50 @@ function renderProfile() {
             ` : ''}
         </div>
 
-        <!-- Yapay Zeka Öğün Ekleme Ayarı Kartı -->
+        <!-- Yapay Zeka Ayarları Kartı -->
         <div class="card">
             <h2><i class="ph ph-sparkle"></i> Yapay Zeka Ayarları</h2>
-            <div class="toggle-switch-container">
+            
+            <div class="toggle-switch-container" style="margin-bottom:15px; padding-bottom:15px; border-bottom:1px solid rgba(0,0,0,0.06);">
                 <div class="toggle-switch-info">
-                    <span class="toggle-switch-title">
-                        Yemekleri Otomatik Ekle
-                    </span>
-                    <span class="toggle-switch-desc">
-                        Yemek analiz edildiğinde onay istemeden doğrudan günlüğünüze eklenir. (Kapatırsanız onay butonu gösterilir).
-                    </span>
+                    <span class="toggle-switch-title">Yemekleri Otomatik Ekle</span>
+                    <span class="toggle-switch-desc">Analiz sonucu onay beklemeden günlüğünüze eklenir.</span>
                 </div>
                 <label class="toggle-switch">
                     <input type="checkbox" id="ai-auto-add-toggle" ${state.user.aiAutoAdd ? 'checked' : ''} onchange="window.handleAIAutoAddToggle(this)">
                     <span class="toggle-slider"></span>
                 </label>
+            </div>
+
+            <div style="background:rgba(66,133,244,0.06); border:1px solid rgba(66,133,244,0.15); border-radius:12px; padding:14px; margin-bottom:10px;">
+                <p style="font-size:12px; font-weight:700; color:#4285f4; margin-bottom:8px; display:flex; align-items:center; gap:6px;">
+                    <i class="ph ph-key"></i> Gelişmiş AI: Kişisel API Key (Opsiyonel)
+                </p>
+                <p style="font-size:11px; color:var(--text-light); margin-bottom:10px; line-height:1.5;">
+                    API key girerseniz yapay zeka çok daha hızlı ve güvenilir çalışır. Key girilmezse ücretsiz Pollinations servisi kullanılır.
+                </p>
+                <div class="input-group" style="margin-bottom:8px;">
+                    <label style="font-size:11px; display:flex; align-items:center; gap:4px;">
+                        <i class="ph ph-google-logo" style="color:#4285f4;"></i>
+                        Gemini API Key 
+                        <a href="https://aistudio.google.com/apikey" target="_blank" style="color:#4285f4; font-size:10px; margin-left:4px;">→ Ücretsiz al</a>
+                    </label>
+                    <input type="password" id="user-gemini-key" 
+                        value="${state.user.geminiApiKey || ''}" 
+                        placeholder="AIza..." 
+                        class="input-minimal" style="width:100%; font-size:12px !important; padding:8px 12px;">
+                </div>
+                <div class="input-group" style="margin-bottom:0;">
+                    <label style="font-size:11px; display:flex; align-items:center; gap:4px;">
+                        <i class="ph ph-robot" style="color:#7c4dff;"></i>
+                        OpenRouter API Key
+                        <a href="https://openrouter.ai/keys" target="_blank" style="color:#7c4dff; font-size:10px; margin-left:4px;">→ Ücretsiz al</a>
+                    </label>
+                    <input type="password" id="user-openrouter-key" 
+                        value="${state.user.openRouterApiKey || ''}" 
+                        placeholder="sk-or-v1-..." 
+                        class="input-minimal" style="width:100%; font-size:12px !important; padding:8px 12px;">
+                </div>
             </div>
         </div>
 
@@ -2269,6 +2297,12 @@ function saveProfile() {
     state.user.height = document.getElementById('user-height').value;
     state.user.weight = document.getElementById('user-weight').value;
     state.user.targetWeight = document.getElementById('user-target').value;
+    
+    // API Keys
+    const geminiKeyEl = document.getElementById('user-gemini-key');
+    const orKeyEl = document.getElementById('user-openrouter-key');
+    if (geminiKeyEl) state.user.geminiApiKey = geminiKeyEl.value.trim();
+    if (orKeyEl) state.user.openRouterApiKey = orKeyEl.value.trim();
     
     storage.set('diyet_user', state.user);
     updateAppMainTitle();
@@ -2566,95 +2600,123 @@ window.clearAIImage = () => {
 };
 
 // Local Turkish Food Calorie Dictionary
+// ─── Genişletilmiş Türk Yemekleri Kalori Veritabanı (200+ yemek) ──────────
 const TURKISH_FOOD_CALORIES = {
-    "yumurta": 75,
-    "haslanmis yumurta": 75,
-    "haşlanmış yumurta": 75,
-    "sahanda yumurta": 120,
-    "omlet": 150,
-    "peynir": 70,
-    "süzme peynir": 50,
-    "suzme peynir": 50,
-    "kasar peynir": 100,
-    "kaşar peynir": 100,
-    "zeytin": 9,
-    "siyah zeytin": 9,
-    "yesil zeytin": 9,
-    "yeşil zeytin": 9,
-    "ekmek": 70,
-    "dilim ekmek": 70,
-    "tam bugday ekmek": 65,
-    "tam buğday ekmek": 65,
-    "simit": 280,
-    "pogaca": 250,
-    "poğaça": 250,
-    "borek": 300,
-    "börek": 300,
-    "tavuk": 150,
-    "tavuk göğsü": 120,
-    "tavuk gogsu": 120,
-    "pilav": 200,
-    "pirinc pilavi": 250,
-    "pirinç pilavı": 250,
-    "bulgur pilavi": 180,
-    "bulgur pilavı": 180,
-    "makarna": 200,
-    "corba": 80,
-    "çorba": 80,
-    "mercimek corbasi": 120,
-    "mercimek çorbası": 120,
-    "tarhana corbasi": 130,
-    "tarhana çorbası": 130,
-    "domates corbasi": 90,
-    "domates çorbası": 90,
-    "salata": 50,
-    "coban salata": 60,
-    "çoban salata": 60,
-    "elma": 52,
-    "muz": 89,
-    "portakal": 47,
-    "mandalina": 35,
-    "cilek": 32,
-    "çilek": 32,
-    "uzum": 67,
-    "üzüm": 67,
-    "karpuz": 30,
-    "kavun": 33,
-    "sut": 120,
-    "süt": 120,
-    "yoğurt": 100,
-    "yogurt": 100,
-    "ayran": 60,
-    "kahve": 2,
-    "turk kahvesi": 2,
-    "türk kahvesi": 2,
-    "cay": 1,
-    "çay": 1,
-    "su": 0,
-    "kebap": 400,
-    "adana kebap": 450,
-    "iskender": 650,
-    "lahmacun": 220,
-    "pide": 350,
-    "kofte": 200,
-    "köfte": 200,
-    "patates kizartmasi": 300,
-    "patates kızartması": 300,
-    "hamburger": 400,
-    "pizza": 500,
-    "balik": 180,
-    "balık": 180,
-    "somon": 200,
-    "ton baligi": 150,
-    "ton balığı": 150
+    // Kahvaltılık
+    "haşlanmış yumurta": 75, "haslanmis yumurta": 75, "yumurta": 75,
+    "sahanda yumurta": 120, "çılbır": 140, "cilbir": 140,
+    "omlet": 150, "menemen": 180,
+    "beyaz peynir": 70, "peynir": 70, "kaşar peynir": 100, "kasar peynir": 100,
+    "süzme peynir": 50, "suzme peynir": 50, "lor peynir": 60, "lor peyniri": 60,
+    "çökelek": 45, "cokelek": 45, "tulum peyniri": 90,
+    "siyah zeytin": 9, "yeşil zeytin": 9, "yesil zeytin": 9, "zeytin": 9,
+    "bal": 64, "reçel": 50, "recel": 50, "tahin": 90, "tahin pekmez": 110,
+    "tereyağı": 70, "tereyagi": 70,
+    // Ekmek & Hamurişi
+    "tam buğday ekmek": 65, "tam bugday ekmek": 65,
+    "dilim ekmek": 70, "ekmek": 70, "çavdar ekmeği": 55, "cavdar ekmegi": 55,
+    "simit": 280, "açma": 250, "acma": 250,
+    "poğaça": 250, "pogaca": 250, "su böreği": 320, "su boregi": 320,
+    "börek": 300, "borek": 300, "sigara böreği": 120, "sigara boregi": 120,
+    "gözleme": 280, "gozleme": 280, "pide": 350,
+    "lahmacun": 220, "pizza": 500, "tost": 300,
+    // Çorba
+    "mercimek çorbası": 120, "mercimek corbasi": 120,
+    "tarhana çorbası": 130, "tarhana corbasi": 130,
+    "domates çorbası": 90, "domates corbasi": 90,
+    "ezogelin çorbası": 125, "ezogelin corbasi": 125,
+    "işkembe çorbası": 140, "iskembe corbasi": 140,
+    "yayla çorbası": 110, "yayla corbasi": 110,
+    "paça çorbası": 160, "paca corbasi": 160,
+    "çorba": 80, "corba": 80,
+    // Et & Tavuk & Balık
+    "tavuk göğsü": 120, "tavuk gogsu": 120, "tavuk": 150,
+    "tavuk budu": 180, "tavuk kanadı": 220, "tavuk kanadi": 220,
+    "tavuk şiş": 200, "tavuk sis": 200,
+    "kıyma": 250, "kiyma": 250,
+    "köfte": 200, "kofte": 200, "adana köfte": 300, "adana kofte": 300,
+    "adana kebap": 450, "urfa kebap": 400, "kebap": 400,
+    "döner": 350, "doner": 350, "iskender": 650,
+    "et": 200, "biftek": 280, "bonfile": 300,
+    "somon": 200, "ton balığı": 150, "ton baligi": 150,
+    "balık": 180, "balik": 180, "hamsi": 120, "lüfer": 170, "lufer": 170,
+    "çipura": 130, "cipura": 130, "levrek": 120,
+    "karides": 100, "midye": 130, "midye dolma": 60,
+    // Yemek
+    "pirinç pilavı": 250, "pirinc pilavi": 250,
+    "bulgur pilavı": 180, "bulgur pilavi": 180, "pilav": 200,
+    "makarna": 200, "spagetti": 200,
+    "fasulye": 150, "kuru fasulye": 200, "kuru fasulyeli pilav": 350,
+    "mercimek": 160, "nohut": 180, "nohut yemeği": 200, "nohut yemegi": 200,
+    "etli sebze yemeği": 200, "etli sebze yemegi": 200,
+    "sebze yemeği": 120, "sebze yemegi": 120,
+    "imambayıldı": 180, "imambayildi": 180,
+    "türlü": 130, "turlu": 130,
+    "musakka": 320, "karnıyarık": 380, "karniyarik": 380,
+    "sarma": 80, "yaprak sarma": 60, "dolma": 80,
+    "mücver": 150, "mucver": 150,
+    "mantı": 280, "manti": 280,
+    "kurban eti": 250, "kuzu eti": 230,
+    // Salata & Meze
+    "çoban salata": 60, "coban salata": 60, "salata": 50,
+    "cacık": 70, "cacik": 70, "haydari": 90,
+    "humus": 130, "patlıcan ezmesi": 100, "patlican ezmesi": 100,
+    "tarama": 150, "zeytinyağlı": 100, "zeytinyagli": 100,
+    // Sebze
+    "domates": 20, "salatalık": 15, "salatalik": 15,
+    "biber": 25, "patlıcan": 30, "patlican": 30,
+    "kabak": 25, "ıspanak": 23, "ispanak": 23,
+    "brokoli": 35, "karnabahar": 30, "havuç": 40, "havuc": 40,
+    "soğan": 35, "sogan": 35, "mısır": 90, "misir": 90,
+    "patates": 80, "tatlı patates": 90, "tatli patates": 90,
+    "patates kızartması": 300, "patates kizartmasi": 300,
+    // Meyve
+    "elma": 52, "muz": 89, "portakal": 47, "mandalina": 35,
+    "çilek": 32, "cilek": 32, "üzüm": 67, "uzum": 67,
+    "karpuz": 30, "kavun": 33, "kiraz": 50, "vişne": 45, "visne": 45,
+    "armut": 55, "şeftali": 45, "seftali": 45, "kayısı": 50, "kayisi": 50,
+    "kivi": 60, "ananas": 50, "mango": 65,
+    "incir": 75, "hurma": 80, "kuru kayısı": 15, "kuru kayisi": 15,
+    "kuru üzüm": 85, "kuru uzum": 85,
+    // Süt & Yoğurt
+    "süt": 120, "sut": 120, "yağsız süt": 85, "yagsiz sut": 85,
+    "yoğurt": 100, "yogurt": 100,
+    "süzme yoğurt": 80, "suzme yogurt": 80,
+    "kefir": 90, "ayran": 60,
+    // Kuruyemiş & Tahıl
+    "badem": 105, "fındık": 115, "findik": 115,
+    "ceviz": 100, "fıstık": 85, "fistik": 85,
+    "antep fıstığı": 85, "antep fistigi": 85,
+    "leblebi": 150, "kabak çekirdeği": 170, "kabak cekirdegi": 170,
+    "ay çekirdeği": 175, "ay cekirdegi": 175,
+    "yulaf": 75, "granola": 200, "müsli": 180, "musli": 180,
+    // İçecek
+    "türk kahvesi": 2, "turk kahvesi": 2, "kahve": 2,
+    "sütlü kahve": 50, "sutlu kahve": 50,
+    "cappuccino": 120, "latte": 150, "americano": 10,
+    "çay": 1, "cay": 1, "ıhlamur": 5, "ihlamur": 5,
+    "bitki çayı": 5, "bitki cayi": 5,
+    "meyve suyu": 110, "portakal suyu": 90,
+    "kola": 140, "soda": 0, "su": 0,
+    // Fast Food
+    "hamburger": 400, "çizburger": 450, "cizburger": 450,
+    "sandviç": 300, "sandwich": 300, "dürüm": 380, "durum": 380,
+    // Tatlı
+    "baklava": 350, "kadayıf": 300, "kadayif": 300,
+    "sütlaç": 200, "sutlac": 200, "muhallebi": 200,
+    "aşure": 180, "asure": 180, "revani": 250,
+    "lokum": 100, "helva": 250, "tahin helvası": 250,
+    "çikolata": 240, "cikolata": 240, "bisküvi": 130, "biskuvi": 130,
+    "kek": 300, "pasta": 400, "dondurma": 200,
 };
 
+// Yerel Kalori Tahmini (İnternet Gerektirmez)
 function estimateCaloriesLocally(text) {
-    if (!text) return { name: "Bilinmeyen Öğün", kcal: 200 };
+    if (!text) return { name: "Bilinmeyen Öğün", kcal: 250 };
     
     const normalized = text.toLowerCase()
-        .replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g,"")
-        .replace(/\s+/g," ");
+        .replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, "")
+        .replace(/\s+/g, " ").trim();
         
     let totalKcal = 0;
     let foundItems = [];
@@ -2664,36 +2726,35 @@ function estimateCaloriesLocally(text) {
     let tempText = normalized;
     sortedKeys.forEach(key => {
         if (tempText.includes(key)) {
-            const regex = new RegExp(`(\\d+)?\\s*${key}`, 'g');
+            const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const regex = new RegExp(`(\\d+[.,]?\\d*)?\\s*${escapedKey}`, 'g');
             let match;
             while ((match = regex.exec(normalized)) !== null) {
-                const multiplier = match[1] ? parseInt(match[1]) : 1;
-                totalKcal += TURKISH_FOOD_CALORIES[key] * multiplier;
-                foundItems.push(`${multiplier} x ${key}`);
+                const multiplier = match[1] ? parseFloat(match[1].replace(',', '.')) : 1;
+                totalKcal += Math.round(TURKISH_FOOD_CALORIES[key] * multiplier);
+                foundItems.push(`${multiplier > 1 ? multiplier + ' x ' : ''}${key}`);
             }
-            tempText = tempText.replace(new RegExp(key, 'g'), '');
+            tempText = tempText.replace(new RegExp(escapedKey, 'g'), '');
         }
     });
     
-    if (totalKcal === 0) {
-        return { name: text.length > 30 ? text.substring(0, 30) + "..." : text, kcal: 250 };
+    if (totalKcal === 0 || totalKcal > 5000) {
+        return { name: text.length > 40 ? text.substring(0, 40) + "..." : text, kcal: totalKcal > 5000 ? 400 : 250 };
     }
     
-    return {
-        name: foundItems.join(" + "),
-        kcal: totalKcal
-    };
+    return { name: foundItems.slice(0, 3).join(" + "), kcal: totalKcal };
 }
 
-// OpenRouter API
-const DEFAULT_OPENROUTER_API_KEY = atob("c2stb3ItdjEtN2I0NTg2ZTgzMzZiNzBkZjZmNjU2NTVmOGU3NWFhYmRhYmY5ZWE4OTc1ZDRkYWE4NGUyYjY4NTQxZjQzNGMyZg==");
+// ─── AI Servis Katmanı ──────────────────────────────────────────────────────
+// Konfigürasyon
 const OPENROUTER_MODELS = [
-    "google/gemini-2.5-flash:free",
     "google/gemini-2.0-flash-exp:free",
     "meta-llama/llama-3.2-11b-vision-instruct:free",
     "qwen/qwen2.5-vl-72b-instruct:free",
-    "openrouter/free"
 ];
+
+// AI Sistem Prompu
+const AI_SYSTEM_PROMPT = "Sen uzman bir diyetisyen yapay zekasısın. Görevin, kullanıcının yediği yemeği/içeceği analiz etmek. Eğer bir fotoğraf varsa onu tanı, yoksa metne odaklan. Tahmini kalorisini söyle ve diyete uygun olup olmadığını kısaca, samimi ve Türkçe bir şekilde anlat. (Maksimum 3-4 cümle) ÖNEMLİ: Cevabının en başına, tek satır olarak ve köşeli parantez içinde, yemeğin/içeceğin düzeltilmiş ve tam Türkçe adını ve yanına tek bir sayı olarak net tahmini kalorisini yaz (aralık belirtme, tek bir ortalama sayı yaz). Örnek: [Haşlanmış Yumurta - 75 kcal] veya [Mercimek Çorbası - 120 kcal]. Bu satırdan sonra açıklamana devam et.";
 
 window.showManualFormOnError = (inputText, errorMsg) => {
     const responseTextEl = document.getElementById('ai-response-text');
@@ -2741,14 +2802,127 @@ window.submitErrorManualAdd = () => {
     document.getElementById('ai-result-box').classList.add('hidden');
 };
 
-window.askAI = async () => {
-    const apiKey = DEFAULT_OPENROUTER_API_KEY;
+// ─── Gemini API (Ücretsiz - AI Studio'dan kişisel key) ─────────────────────
+const makeGeminiRequest = async (text, imageBase64) => {
+    const apiKey = state.user.geminiApiKey || '';
+    if (!apiKey) throw new Error('Gemini API key yok');
     
-    if (!apiKey) {
-        showToast('Lütfen geçerli bir OpenRouter API anahtarı ekleyin.', 'error');
-        return;
+    const model = imageBase64 ? 'gemini-2.0-flash' : 'gemini-2.0-flash';
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+    
+    const parts = [];
+    if (imageBase64) {
+        const mimeMatch = imageBase64.match(/^data:([^;]+);base64,/);
+        const mimeType = mimeMatch ? mimeMatch[1] : 'image/jpeg';
+        const base64Data = imageBase64.replace(/^data:[^;]+;base64,/, '');
+        parts.push({ inlineData: { mimeType, data: base64Data } });
+        if (text) parts.push({ text: `Kullanıcı notu: ${text}` });
+        else parts.push({ text: 'Lütfen bu fotoğraftaki yemeği analiz et.' });
+    } else {
+        parts.push({ text });
     }
+    
+    const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            systemInstruction: { parts: [{ text: AI_SYSTEM_PROMPT }] },
+            contents: [{ role: 'user', parts }],
+            generationConfig: { temperature: 0.4, maxOutputTokens: 512 }
+        })
+    });
+    
+    if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.error?.message || `Gemini HTTP ${response.status}`);
+    }
+    
+    const data = await response.json();
+    const aiText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!aiText) throw new Error('Gemini boş yanıt döndü');
+    return { choices: [{ message: { content: aiText } }] };
+};
 
+// ─── OpenRouter API (Ücretsiz modeller) ────────────────────────────────────
+const makeOpenRouterRequest = async (text, imageBase64, modelName) => {
+    const apiKey = state.user.openRouterApiKey || '';
+    if (!apiKey) throw new Error('OpenRouter key yok');
+    
+    const messages = [];
+    if (imageBase64) {
+        messages.push({
+            role: 'user',
+            content: [
+                { type: 'text', text: AI_SYSTEM_PROMPT + (text ? `\nKullanıcı notu: ${text}` : '\nLütfen bu fotoğrafı analiz et.') },
+                { type: 'image_url', image_url: { url: imageBase64 } }
+            ]
+        });
+    } else {
+        messages.push({ role: 'system', content: AI_SYSTEM_PROMPT });
+        messages.push({ role: 'user', content: text });
+    }
+    
+    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${apiKey}`,
+            'Content-Type': 'application/json',
+            'HTTP-Referer': 'https://github.com/fatihpatir/diyetim',
+            'X-Title': 'Diyetim'
+        },
+        body: JSON.stringify({ model: modelName, messages, temperature: 0.5, max_tokens: 512 })
+    });
+    
+    if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.error?.message || `OpenRouter HTTP ${response.status}`);
+    }
+    return response.json();
+};
+
+// ─── Pollinations.ai (Tamamen Ücretsiz & Anonim) ───────────────────────────
+const makePollinationsRequest = async (text, imageBase64) => {
+    const messages = [];
+    if (imageBase64) {
+        messages.push({
+            role: 'user',
+            content: [
+                { type: 'text', text: AI_SYSTEM_PROMPT + (text ? `\nKullanıcı notu: ${text}` : '\nLütfen bu fotoğrafı analiz et.') },
+                { type: 'image_url', image_url: { url: imageBase64 } }
+            ]
+        });
+    } else {
+        messages.push({ role: 'system', content: AI_SYSTEM_PROMPT });
+        messages.push({ role: 'user', content: text });
+    }
+    
+    // Resimli istek için openai-vision modeli dene
+    const model = imageBase64 ? 'openai' : 'openai';
+    
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 20000);
+    
+    try {
+        const response = await fetch('https://text.pollinations.ai/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ messages, model, temperature: 0.5, seed: Math.floor(Math.random() * 9999) }),
+            signal: controller.signal
+        });
+        clearTimeout(timeout);
+        
+        if (!response.ok) throw new Error(`Pollinations HTTP ${response.status}`);
+        
+        const aiText = await response.text();
+        if (!aiText || aiText.trim().length < 10) throw new Error('Pollinations boş yanıt');
+        return { choices: [{ message: { content: aiText } }] };
+    } catch(e) {
+        clearTimeout(timeout);
+        throw e;
+    }
+};
+
+window.askAI = async () => {
     const text = document.getElementById('ai-input-text').value.trim();
     const imageBase64 = window.currentAIImageBase64;
 
@@ -2765,150 +2939,81 @@ window.askAI = async () => {
     resultBox.classList.remove('hidden');
     loadingEl.classList.remove('hidden');
     responseTextEl.classList.add('hidden');
-    loadingTextEl.innerText = "Yapay Zeka Analiz Ediyor...";
-
-    const makeRequest = async (useImage, modelName) => {
-        let systemPrompt = "Sen uzman bir diyetisyen yapay zekasısın. Görevin, kullanıcının yediği yemeği/içeceği analiz etmek. Eğer bir fotoğraf varsa onu tanı, yoksa metne odaklan. Tahmini kalorisini söyle ve diyete uygun olup olmadığını kısaca, samimi ve Türkçe bir şekilde anlat. (Maksimum 3-4 cümle) ÖNEMLİ: Cevabının en başına, tek satır olarak ve köşeli parantez içinde, yemeğin/içeceğin düzeltilmiş ve tam Türkçe adını ve yanına tek bir sayı olarak net tahmini kalorisini yaz (aralık belirtme, tek bir ortalama sayı yaz). Örnek: [Haşlanmış Yumurta - 75 kcal] veya [Mercimek Çorbası - 120 kcal]. Bu satırdan sonra açıklamana devam et.";
-        
-        let messages = [];
-        if (useImage && imageBase64) {
-            messages.push({
-                role: "user",
-                content: [
-                    { type: "text", text: systemPrompt + (text ? "\nKullanıcı notu: " + text : "\nLütfen bu fotoğrafı analiz et.") },
-                    { type: "image_url", image_url: { url: imageBase64 } }
-                ]
-            });
-        } else {
-            messages.push({ role: "system", content: systemPrompt });
-            messages.push({ role: "user", content: text });
-        }
-
-        const headers = {
-            "Authorization": `Bearer ${apiKey}`,
-            "Content-Type": "application/json",
-            "HTTP-Referer": "https://github.com/fatihpatir/diyetim",
-            "X-Title": "Diyet Asistanim"
-        };
-
-        const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-            method: "POST",
-            headers: headers,
-            body: JSON.stringify({
-                model: modelName,
-                messages: messages,
-                temperature: 0.5,
-                max_tokens: 512
-            })
-        });
-
-        if (!response.ok) {
-            const errData = await response.json().catch(() => ({}));
-            throw new Error(errData.error?.message || `HTTP ${response.status}`);
-        }
-
-        return await response.json();
-    };
-
-    // Try keyless Pollinations.ai API as a robust fallback
-    const makePollinationsRequest = async (useImage) => {
-        let systemPrompt = "Sen uzman bir diyetisyen yapay zekasısın. Görevin, kullanıcının yediği yemeği/içeceği analiz etmek. Eğer bir fotoğraf varsa onu tanı, yoksa metne odaklan. Tahmini kalorisini söyle ve diyete uygun olup olmadığını kısaca, samimi ve Türkçe bir şekilde anlat. (Maksimum 3-4 cümle) ÖNEMLİ: Cevabının en başına, tek satır olarak ve köşeli parantez içinde, yemeğin/içeceğin düzeltilmiş ve tam Türkçe adını ve yanına tek bir sayı olarak net tahmini kalorisini yaz (aralık belirtme, tek bir ortalama sayı yaz). Örnek: [Haşlanmış Yumurta - 75 kcal] veya [Mercimek Çorbası - 120 kcal]. Bu satırdan sonra açıklamana devam et.";
-        
-        let messages = [];
-        if (useImage && imageBase64) {
-            messages.push({
-                role: "user",
-                content: [
-                    { type: "text", text: systemPrompt + (text ? "\nKullanıcı notu: " + text : "\nLütfen bu fotoğrafı analiz et.") },
-                    { type: "image_url", image_url: { url: imageBase64 } }
-                ]
-            });
-        } else {
-            messages.push({ role: "system", content: systemPrompt });
-            messages.push({ role: "user", content: text });
-        }
-
-        const response = await fetch("https://text.pollinations.ai/", {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json"
-            },
-            body: JSON.stringify({
-                messages: messages,
-                model: "openai",
-                temperature: 0.5
-            })
-        });
-
-        if (!response.ok) {
-            throw new Error(`Pollinations HTTP ${response.status}`);
-        }
-
-        const aiText = await response.text();
-        return {
-            choices: [{
-                message: {
-                    content: aiText
-                }
-            }]
-        };
-    };
+    loadingTextEl.innerText = 'Yapay Zeka Analiz Ediyor...';
 
     try {
         let data = null;
         let success = false;
         let visualError = false;
-        let methodUsed = "OpenRouter";
+        let methodUsed = 'Yerel';
 
-        // Step 1: Try OpenRouter with various free models
-        for (const model of OPENROUTER_MODELS) {
+        // KAT 1: Gemini API (kullanıcı key girdiyse - en stabil, ücretsiz)
+        if (!success && state.user.geminiApiKey) {
             try {
-                console.log(`Trying OpenRouter model: ${model}`);
-                data = await makeRequest(imageBase64 ? true : false, model);
+                loadingTextEl.innerText = 'Gemini ile analiz ediliyor...';
+                console.log('Trying Gemini API...');
+                data = await makeGeminiRequest(text, imageBase64);
                 success = true;
-                break;
+                methodUsed = 'Gemini';
             } catch (err) {
-                console.warn(`OpenRouter model ${model} failed:`, err);
+                console.warn('Gemini failed:', err.message);
             }
         }
 
-        // Step 2: If OpenRouter fails, try Pollinations.ai (totally keyless free endpoint)
+        // KAT 2: OpenRouter (kullanıcı key girdiyse)
+        if (!success && state.user.openRouterApiKey) {
+            for (const model of OPENROUTER_MODELS) {
+                try {
+                    loadingTextEl.innerText = 'OpenRouter ile analiz ediliyor...';
+                    console.log(`Trying OpenRouter: ${model}`);
+                    data = await makeOpenRouterRequest(text, imageBase64, model);
+                    success = true;
+                    methodUsed = 'OpenRouter';
+                    break;
+                } catch (err) {
+                    console.warn(`OpenRouter ${model} failed:`, err.message);
+                }
+            }
+        }
+
+        // KAT 3: Pollinations.ai (Tamamen ücretsiz, key gerektirmez)
         if (!success) {
             try {
-                console.log("OpenRouter failed completely. Falling back to Pollinations.ai...");
-                loadingTextEl.innerText = "Yedek sunucu üzerinden analiz ediliyor...";
-                data = await makePollinationsRequest(imageBase64 ? true : false);
+                loadingTextEl.innerText = 'Ücretsiz sunucu ile analiz ediliyor...';
+                console.log('Trying Pollinations.ai...');
+                data = await makePollinationsRequest(text, imageBase64);
                 success = true;
-                methodUsed = "Pollinations";
+                methodUsed = 'Pollinations';
             } catch (err) {
-                console.warn("Pollinations.ai failed:", err);
+                console.warn('Pollinations failed:', err.message);
+                // Resimli istek başarısızsa sadece metinle dene
                 if (imageBase64 && text) {
                     try {
-                        console.log("Trying text-only on Pollinations.ai...");
-                        data = await makePollinationsRequest(false);
+                        loadingTextEl.innerText = 'Metin ile analiz ediliyor...';
+                        data = await makePollinationsRequest(text, null);
                         success = true;
                         visualError = true;
-                        methodUsed = "Pollinations (Text Only)";
+                        methodUsed = 'Pollinations (Metin)';
                     } catch (textErr) {
-                        console.warn("Pollinations.ai text-only also failed:", textErr);
+                        console.warn('Pollinations text-only also failed:', textErr.message);
                     }
                 }
             }
         }
 
-        // Step 3: If AI API fails, use local dictionary database (instant offline fallback)
+        // KAT 4: Yerel veritabanı (her zaman çalışır, internet gerekmez)
         if (!success) {
-            console.log("All AI APIs failed. Falling back to local offline estimation database...");
-            loadingTextEl.innerText = "Yerel veritabanı ile tahmin ediliyor...";
+            console.log('Tüm AI servisleri başarısız. Yerel veritabanı kullanılıyor...');
+            loadingTextEl.innerText = 'Yerel veritabanı ile tahmin ediliyor...';
             const localResult = estimateCaloriesLocally(text);
             data = {
                 choices: [{
                     message: {
-                        content: `[${localResult.name} - ${localResult.kcal} kcal]\n\nİnternet bağlantısı veya sunucu hatası nedeniyle yerel veritabanı kullanıldı. Bu öğün tahmini olarak ${localResult.kcal} kalori içerir ve diyetinize otomatik olarak eklenmiştir.`
+                        content: `[${localResult.name} - ${localResult.kcal} kcal]\n\n📴 İnternet bağlantısı olmadığından veya sunucu meşgul olduğundan, yerleşik Türk yemekleri veritabanı kullanıldı. Tahmini kalori: **${localResult.kcal} kcal**. Dilediğiniz kadar düzenleyebilirsiniz.`
                     }
                 }]
             };
-            methodUsed = "Local Database Fallback";
+            methodUsed = 'Yerel Veritabanı';
         }
         
         loadingEl.classList.add('hidden');
