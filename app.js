@@ -1,6 +1,63 @@
 // OneSignal Uygulama Kimliği
 const ONESIGNAL_APP_ID = "bc5e0b50-e086-41bb-837a-5b19e0632605";
 
+// Premium Custom Toast Notifications
+function showToast(message, type = 'success') {
+    let container = document.getElementById('toast-container');
+    if (!container) {
+        container = document.createElement('div');
+        container.id = 'toast-container';
+        container.style.position = 'fixed';
+        container.style.bottom = '85px'; // Above bottom navigation bar
+        container.style.left = '50%';
+        container.style.transform = 'translateX(-50%)';
+        container.style.zIndex = '99999';
+        container.style.display = 'flex';
+        container.style.flexDirection = 'column';
+        container.style.gap = '8px';
+        container.style.width = '90%';
+        container.style.maxWidth = '350px';
+        container.style.pointerEvents = 'none';
+        document.body.appendChild(container);
+    }
+    
+    const toast = document.createElement('div');
+    toast.className = 'custom-toast';
+    toast.style.background = type === 'success' ? 'var(--primary-dark, #4a7c59)' : (type === 'error' ? '#ef5350' : '#ff9800');
+    toast.style.color = '#fff';
+    toast.style.padding = '12px 16px';
+    toast.style.borderRadius = '12px';
+    toast.style.boxShadow = '0 8px 24px rgba(0,0,0,0.15)';
+    toast.style.fontSize = '13.5px';
+    toast.style.fontWeight = '600';
+    toast.style.display = 'flex';
+    toast.style.alignItems = 'center';
+    toast.style.gap = '8px';
+    toast.style.opacity = '0';
+    toast.style.transition = 'opacity 0.3s, transform 0.3s';
+    toast.style.transform = 'translateY(15px)';
+    toast.style.pointerEvents = 'auto';
+    
+    let icon = 'ph ph-check-circle';
+    if (type === 'error') icon = 'ph ph-x-circle';
+    if (type === 'warning') icon = 'ph ph-warning';
+    
+    toast.innerHTML = `<i class="${icon}" style="font-size:18px;"></i> <span style="flex-grow:1;">${message}</span>`;
+    container.appendChild(toast);
+    
+    setTimeout(() => {
+        toast.style.opacity = '1';
+        toast.style.transform = 'translateY(0)';
+    }, 10);
+    
+    setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transform = 'translateY(-15px)';
+        setTimeout(() => toast.remove(), 300);
+    }, 3500);
+}
+window.showToast = showToast;
+
 // ─── Merkezi OneSignal Servis Modülü ───────────────────────────────────────
 // Tüm OneSignal SDK etkileşimleri bu modül üzerinden yapılır.
 // Bu modül dışında doğrudan OneSignal SDK çağrısı yapılmamalıdır.
@@ -507,7 +564,7 @@ const storage = {
 // State Management
 const state = {
     currentTab: 'dashboard',
-    user: storage.get('diyet_user', { name: '', age: '', height: '', weight: '', targetWeight: '', gender: 'female', theme: 'theme-default', geminiApiKey: '', groqApiKey: '', openRouterApiKey: '', waterReminder: false }),
+    user: storage.get('diyet_user', { name: '', age: '', height: '', weight: '', targetWeight: '', gender: 'female', theme: 'theme-default', geminiApiKey: '', groqApiKey: '', openRouterApiKey: '', waterReminder: false, aiAutoAdd: false, notifStartHour: 8, notifEndHour: 22, notifInterval: 1 }),
     water: storage.get('diyet_water', { date: new Date().toLocaleDateString(), count: 0 }),
     logs: storage.get('diyet_logs', []),
     daily: storage.get('diyet_daily', { date: new Date().toLocaleDateString(), intake: [], steps: 0 })
@@ -654,7 +711,7 @@ const WaterReminderManager = {
     // Bildirim izni isteme ve aktif etme (Standart PWA modunda)
     requestPermission: async (toggleEl) => {
         if (!('Notification' in window)) {
-            alert("Maalesef tarayıcınız anlık bildirimleri desteklemiyor.");
+            showToast("Maalesef tarayıcınız anlık bildirimleri desteklemiyor.", "error");
             if (toggleEl) toggleEl.checked = false;
             return false;
         }
@@ -802,14 +859,11 @@ const WaterReminderManager = {
         }
     },
 
-    // Saatlik kontrol algoritması (Sadece Standart PWA modunda çalışır, OneSignal kendisi arka plandan atar)
+    // Saatlik kontrol algoritması (Her dakika kontrol edilir, active session fallbacks için)
     checkAndSendHourlyWaterReminder: () => {
         // Yardımcı bildirim kontrollerini çalıştır
         WaterReminderManager.checkAndSendMealReminders();
         WaterReminderManager.checkAndSendWalkReminder();
-
-        // Eğer OneSignal devredeyse onun kendi arka plan push sistemi vardır, client-side check çalışmasın
-        if (ONESIGNAL_APP_ID && ONESIGNAL_APP_ID !== "SİZİN_ONESIGNAL_APP_ID_DEĞERİNİZ") return;
 
         if (!state.user.waterReminder) return;
         if (Notification.permission !== 'granted') return;
@@ -817,8 +871,12 @@ const WaterReminderManager = {
         const now = new Date();
         const currentHour = now.getHours();
 
-        // Sadece Sabah 08:00 ile Akşam 22:00 arasında çalış
-        if (currentHour >= 8 && currentHour <= 22) {
+        const startH = state.user.notifStartHour !== undefined ? state.user.notifStartHour : 8;
+        const endH = state.user.notifEndHour !== undefined ? state.user.notifEndHour : 22;
+        const interval = state.user.notifInterval !== undefined ? state.user.notifInterval : 1;
+
+        // Belirlenen saat aralığında ve sıklıkta çalış
+        if (currentHour >= startH && currentHour <= endH && ((currentHour - startH) % interval === 0)) {
             const lastSentHour = storage.get('last_sent_water_hour', -1);
             
             if (lastSentHour !== currentHour) {
@@ -830,39 +888,148 @@ const WaterReminderManager = {
                 console.log(`Su hatırlatıcı bildirimi saat ${currentHour}:00 için gönderildi.`);
             }
         }
+    },
+
+    // Ömürlük Bildirimleri Zamanlama (TimestampTrigger ile sonraki 7 günün tüm bildirimlerini cihazın kendisine kaydeder)
+    scheduleLocalAlarms: async () => {
+        if (!('serviceWorker' in navigator)) return;
+        
+        try {
+            const reg = await navigator.serviceWorker.ready;
+            
+            // Notification Triggers desteği kontrolü
+            const isSupported = (typeof TimestampTrigger !== 'undefined') || 
+                                ('showTrigger' in Notification.prototype) || 
+                                (window.TimestampTrigger !== undefined);
+                                
+            if (!isSupported) {
+                console.log("TimestampTrigger (Notification Triggers) API bu tarayıcıda desteklenmiyor.");
+                return;
+            }
+
+            // Eski zamanlanmış bildirimleri temizle
+            const activeNotifs = await reg.getNotifications({ includeTriggered: true });
+            activeNotifs.forEach(n => {
+                if (n.tag && n.tag.startsWith('hourly_water_')) {
+                    n.close();
+                }
+            });
+
+            if (!state.user.waterReminder || Notification.permission !== 'granted') {
+                console.log("Hatırlatıcı kapalı veya izin verilmemiş. Eski bildirimler temizlendi.");
+                return;
+            }
+
+            const messages = WaterReminderManager.messages;
+            const now = new Date();
+            let count = 0;
+
+            const startH = state.user.notifStartHour !== undefined ? state.user.notifStartHour : 8;
+            const endH = state.user.notifEndHour !== undefined ? state.user.notifEndHour : 22;
+            const interval = state.user.notifInterval !== undefined ? state.user.notifInterval : 1;
+
+            // Önümüzdeki 7 gün için belirlenen saat ve aralıkta bildirimleri zamanla
+            for (let day = 0; day < 7; day++) {
+                for (let hour = startH; hour <= endH; hour += interval) {
+                    const target = new Date();
+                    target.setDate(now.getDate() + day);
+                    target.setHours(hour, 0, 0, 0);
+
+                    // Geçmiş saatleri atla
+                    if (target <= now) continue;
+
+                    const timestamp = target.getTime();
+                    const randomMsg = messages[Math.floor(Math.random() * messages.length)];
+                    const TriggerConstructor = window.TimestampTrigger || TimestampTrigger;
+
+                    reg.showNotification("Su İçme Zamanı! 💧", {
+                        body: randomMsg,
+                        icon: 'icon.png',
+                        badge: 'icon.png',
+                        tag: `hourly_water_${timestamp}`,
+                        showTrigger: new TriggerConstructor(timestamp)
+                    });
+                    count++;
+                }
+            }
+            console.log(`Cihaza çevrimdışı çalışacak ${count} adet kişiselleştirilmiş bildirim başarıyla kaydedildi.`);
+        } catch (err) {
+            console.warn("Yerel bildirim zamanlaması başarısız:", err);
+        }
+    },
+
+    // OneSignal Etiketlerini Güncelleme ve Senkronizasyon
+    syncOneSignalTags: async () => {
+        if (!ONESIGNAL_APP_ID || ONESIGNAL_APP_ID === "SİZİN_ONESIGNAL_APP_ID_DEĞERİNİZ") return;
+
+        window.OneSignalDeferred = window.OneSignalDeferred || [];
+        window.OneSignalDeferred.push(async (OneSignal) => {
+            try {
+                const tags = {};
+                // Reset all hour tags first
+                for (let h = 0; h < 24; h++) {
+                    tags[`hour_${h}`] = "false";
+                }
+
+                if (state.user.waterReminder) {
+                    const startHour = state.user.notifStartHour !== undefined ? state.user.notifStartHour : 8;
+                    const endHour = state.user.notifEndHour !== undefined ? state.user.notifEndHour : 22;
+                    const interval = state.user.notifInterval !== undefined ? state.user.notifInterval : 1;
+
+                    // Set active hours to true
+                    for (let h = startHour; h <= endHour; h += interval) {
+                        tags[`hour_${h}`] = "true";
+                    }
+                    tags["water_reminder"] = "true";
+                } else {
+                    tags["water_reminder"] = "false";
+                }
+
+                await OneSignal.User.addTags(tags);
+                console.log("OneSignal etiketleri başarıyla güncellendi:", tags);
+            } catch (err) {
+                console.warn("OneSignal etiket güncellenirken hata:", err);
+            }
+        });
     }
 };
 
 window.handleWaterReminderToggle = async (checkbox) => {
-    if (ONESIGNAL_APP_ID) {
-        // --- OneSignal Web Push Modu ---
-        const doToggle = (OneSignal) => {
-            if (checkbox.checked) {
-                OneSignal.User.PushSubscription.optIn();
-                console.log("OneSignal: Bildirimler açılıyor...");
-            } else {
-                OneSignal.User.PushSubscription.optOut();
-                state.user.waterReminder = false;
-                storage.set('diyet_user', state.user);
-                console.log("OneSignal: Bildirimler kapatıldı.");
+    if (checkbox.checked) {
+        const permission = await Notification.requestPermission();
+        if (permission === 'granted') {
+            state.user.waterReminder = true;
+            storage.set('diyet_user', state.user);
+            if (ONESIGNAL_APP_ID && ONESIGNAL_APP_ID !== "SİZİN_ONESIGNAL_APP_ID_DEĞERİNİZ") {
+                window.OneSignalDeferred = window.OneSignalDeferred || [];
+                window.OneSignalDeferred.push((OneSignal) => {
+                    OneSignal.User.PushSubscription.optIn();
+                });
             }
-        };
-
-        // OneSignal SDK yüklendikten sonra çalıştır
-        window.OneSignalDeferred = window.OneSignalDeferred || [];
-        window.OneSignalDeferred.push(doToggle);
-    } else {
-        // --- Standart PWA Bildirim Modu (OneSignal yoksa fallback) ---
-        if (checkbox.checked) {
-            const success = await WaterReminderManager.requestPermission(checkbox);
-            if (!success) {
-                checkbox.checked = false;
-            }
+            await WaterReminderManager.syncOneSignalTags();
+            await WaterReminderManager.scheduleLocalAlarms();
+            showToast("Harika! Artık belirlediğiniz saatlerde size su ve motivasyon hatırlatıcıları göndereceğim! 💧", "success");
         } else {
+            checkbox.checked = false;
             state.user.waterReminder = false;
             storage.set('diyet_user', state.user);
-            console.log("Su hatırlatıcısı kapatıldı.");
+            if (permission === 'denied') {
+                WaterReminderManager.showPermissionBlockedModal();
+            }
         }
+    } else {
+        state.user.waterReminder = false;
+        storage.set('diyet_user', state.user);
+        if (ONESIGNAL_APP_ID && ONESIGNAL_APP_ID !== "SİZİN_ONESIGNAL_APP_ID_DEĞERİNİZ") {
+            window.OneSignalDeferred = window.OneSignalDeferred || [];
+            window.OneSignalDeferred.push((OneSignal) => {
+                OneSignal.User.PushSubscription.optOut();
+            });
+        }
+        await WaterReminderManager.syncOneSignalTags();
+        await WaterReminderManager.scheduleLocalAlarms();
+        showToast("Hatırlatıcılar kapatıldı.", "info");
+        console.log("Su hatırlatıcısı kapatıldı.");
     }
 };
 
@@ -1101,7 +1268,7 @@ window.saveSetup = () => {
     const target = document.getElementById('setup-target').value;
     
     if(!name || !weight || !height || !age) {
-        alert("Lütfen tüm temel bilgileri doldurun.");
+        showToast("Lütfen tüm temel bilgileri doldurun.", "warning");
         return;
     }
     
@@ -1148,7 +1315,7 @@ window.addWater = (amount) => {
 
 window.copySummary = () => {
     if (state.logs.length === 0) {
-        alert("Henüz kilo kaydı bulunmuyor.");
+        showToast("Henüz kilo kaydı bulunmuyor.", "warning");
         return;
     }
 
@@ -1178,7 +1345,7 @@ window.copySummary = () => {
 
     document.getElementById('confirm-share-btn').onclick = () => {
         navigator.clipboard.writeText(text).then(() => {
-            alert('Özet panoya kopyalandı! İstediğin yerde paylaşabilirsin.');
+            showToast('Özet panoya kopyalandı! İstediğin yerde paylaşabilirsin.', 'success');
             modalContainer.classList.add('hidden');
         });
     };
@@ -1803,7 +1970,10 @@ function saveLog() {
     const weight = weightInput.value;
     const rawDate = dateInput.value;
     
-    if (!weight || !rawDate) return alert('Lütfen bilgileri girin.');
+    if (!weight || !rawDate) {
+        showToast('Lütfen bilgileri girin.', 'warning');
+        return;
+    }
 
     // Format date as DD.MM
     const dateObj = new Date(rawDate);
@@ -1946,7 +2116,7 @@ function renderProfile() {
                         <i class="ph ph-drop-fill" style="color: #29b6f6;"></i> Saatlik Su Hatırlatıcısı
                     </span>
                     <span class="toggle-switch-desc">
-                        Sabah 08:00 ile akşam 22:00 arasında her saat başı su içmeni hatırlatır.
+                        Belirleyeceğiniz saatler ve sıklıkla su içmenizi ve motive olmanızı hatırlatır.
                     </span>
                 </div>
                 <label class="toggle-switch">
@@ -1954,12 +2124,59 @@ function renderProfile() {
                     <span class="toggle-slider"></span>
                 </label>
             </div>
+            
+            <!-- Detaylı Bildirim Saat ve Sıklık Ayarları -->
+            <div class="notification-details-section" id="notification-details-section" style="margin-top: 15px; border-top: 1px solid rgba(0,0,0,0.05); padding-top: 15px; display: ${state.user.waterReminder ? 'block' : 'none'};">
+                <div class="input-row-complex" style="display: flex; gap: 10px; margin-bottom: 12px;">
+                    <div class="input-group" style="flex: 1; margin-bottom: 0;">
+                        <label style="font-size: 11px;">Başlangıç Saati</label>
+                        <select id="notif-start-hour" class="input-minimal" style="width: 100%; padding: 8px;" onchange="window.updateNotifSettings()">
+                            ${Array.from({length: 24}, (_, i) => `<option value="${i}" ${state.user.notifStartHour === i ? 'selected' : (i === 8 && state.user.notifStartHour === undefined ? 'selected' : '')}>${i.toString().padStart(2, '0')}:00</option>`).join('')}
+                        </select>
+                    </div>
+                    <div class="input-group" style="flex: 1; margin-bottom: 0;">
+                        <label style="font-size: 11px;">Bitiş Saati</label>
+                        <select id="notif-end-hour" class="input-minimal" style="width: 100%; padding: 8px;" onchange="window.updateNotifSettings()">
+                            ${Array.from({length: 24}, (_, i) => `<option value="${i}" ${state.user.notifEndHour === i ? 'selected' : (i === 22 && state.user.notifEndHour === undefined ? 'selected' : '')}>${i.toString().padStart(2, '0')}:00</option>`).join('')}
+                        </select>
+                    </div>
+                </div>
+                <div class="input-group" style="margin-bottom: 0;">
+                    <label style="font-size: 11px;">Hatırlatma Sıklığı</label>
+                    <select id="notif-interval" class="input-minimal" style="width: 100%; padding: 8px;" onchange="window.updateNotifSettings()">
+                        <option value="1" ${state.user.notifInterval === 1 ? 'selected' : ''}>Her saat başı</option>
+                        <option value="2" ${state.user.notifInterval === 2 ? 'selected' : ''}>2 saatte bir</option>
+                        <option value="3" ${state.user.notifInterval === 3 ? 'selected' : ''}>3 saatte bir</option>
+                        <option value="4" ${state.user.notifInterval === 4 ? 'selected' : ''}>4 saatte bir</option>
+                    </select>
+                </div>
+            </div>
+
             ${('Notification' in window) && Notification.permission === 'denied' ? `
-                <div class="blocked-notification-warning">
+                <div class="blocked-notification-warning" style="margin-top:15px;">
                     <i class="ph ph-warning-circle"></i>
                     <span>Tarayıcınızda bildirim izinleri engellenmiş! Hatırlatıcıları almak için adres çubuğundaki kilit simgesinden izin verin.</span>
                 </div>
             ` : ''}
+        </div>
+
+        <!-- Yapay Zeka Öğün Ekleme Ayarı Kartı -->
+        <div class="card">
+            <h2><i class="ph ph-sparkle"></i> Yapay Zeka Ayarları</h2>
+            <div class="toggle-switch-container">
+                <div class="toggle-switch-info">
+                    <span class="toggle-switch-title">
+                        Yemekleri Otomatik Ekle
+                    </span>
+                    <span class="toggle-switch-desc">
+                        Yemek analiz edildiğinde onay istemeden doğrudan günlüğünüze eklenir. (Kapatırsanız onay butonu gösterilir).
+                    </span>
+                </div>
+                <label class="toggle-switch">
+                    <input type="checkbox" id="ai-auto-add-toggle" ${state.user.aiAutoAdd ? 'checked' : ''} onchange="window.handleAIAutoAddToggle(this)">
+                    <span class="toggle-slider"></span>
+                </label>
+            </div>
         </div>
 
         <div class="card" style="text-align:center">
@@ -1992,7 +2209,33 @@ window.setGender = (gender) => {
     renderTab('profile');
 };
 
-// Duplicate window.setTheme removed
+window.handleAIAutoAddToggle = (checkbox) => {
+    state.user.aiAutoAdd = checkbox.checked;
+    storage.set('diyet_user', state.user);
+    showToast(checkbox.checked ? 'Otomatik kalori ekleme aktifleştirildi.' : 'Otomatik kalori ekleme kapatıldı.', 'success');
+};
+
+window.updateNotifSettings = async () => {
+    const startHour = parseInt(document.getElementById('notif-start-hour').value);
+    const endHour = parseInt(document.getElementById('notif-end-hour').value);
+    const interval = parseInt(document.getElementById('notif-interval').value);
+    
+    if (startHour >= endHour) {
+        showToast('Başlangıç saati bitiş saatinden önce olmalıdır!', 'warning');
+        return;
+    }
+    
+    state.user.notifStartHour = startHour;
+    state.user.notifEndHour = endHour;
+    state.user.notifInterval = interval;
+    
+    storage.set('diyet_user', state.user);
+    
+    // Reschedule alarms with new settings
+    await WaterReminderManager.syncOneSignalTags();
+    await WaterReminderManager.scheduleLocalAlarms();
+    showToast('Hatırlatıcı saatleri güncellendi.', 'success');
+};
 
 function saveProfile() {
     state.user.name = document.getElementById('user-name').value;
@@ -2003,7 +2246,7 @@ function saveProfile() {
     
     storage.set('diyet_user', state.user);
     updateAppMainTitle();
-    alert('Profiliniz kaydedildi!');
+    showToast('Profiliniz başarıyla kaydedildi!', 'success');
 }
 
 function calculateTargetCalories() {
@@ -2075,7 +2318,7 @@ window.promptManualIntake = () => {
 window.addToDailyIntake = (kcal, label) => {
     state.daily.intake.push({ kcal: parseInt(kcal), label: label, time: new Date().toLocaleTimeString('tr-TR', {hour:'2-digit', minute:'2-digit'}) });
     storage.set('diyet_daily', state.daily);
-    alert(`${label} (${kcal} kcal) günlüğe eklendi!`);
+    showToast(`${label} (${kcal} kcal) günlüğe eklendi!`, 'success');
     renderTab('dashboard');
 };
 
@@ -2234,12 +2477,12 @@ window.submitManualAdd = () => {
     const label = document.getElementById('manual-label').value.trim();
     const kcalVal = document.getElementById('manual-kcal').value.trim();
     if (!label) {
-        alert("Lütfen ne yediğinizi yazın.");
+        showToast("Lütfen ne yediğinizi yazın.", "warning");
         return;
     }
     const kcal = kcalVal ? parseInt(kcalVal) : 200;
     if (isNaN(kcal) || kcal < 0) {
-        alert("Lütfen geçerli bir kalori değeri girin.");
+        showToast("Lütfen geçerli bir kalori değeri girin.", "warning");
         return;
     }
     window.addToDailyIntake(kcal, label);
@@ -2296,9 +2539,135 @@ window.clearAIImage = () => {
     document.getElementById('ai-image-upload').value = '';
 };
 
+// Local Turkish Food Calorie Dictionary
+const TURKISH_FOOD_CALORIES = {
+    "yumurta": 75,
+    "haslanmis yumurta": 75,
+    "haşlanmış yumurta": 75,
+    "sahanda yumurta": 120,
+    "omlet": 150,
+    "peynir": 70,
+    "süzme peynir": 50,
+    "suzme peynir": 50,
+    "kasar peynir": 100,
+    "kaşar peynir": 100,
+    "zeytin": 9,
+    "siyah zeytin": 9,
+    "yesil zeytin": 9,
+    "yeşil zeytin": 9,
+    "ekmek": 70,
+    "dilim ekmek": 70,
+    "tam bugday ekmek": 65,
+    "tam buğday ekmek": 65,
+    "simit": 280,
+    "pogaca": 250,
+    "poğaça": 250,
+    "borek": 300,
+    "börek": 300,
+    "tavuk": 150,
+    "tavuk göğsü": 120,
+    "tavuk gogsu": 120,
+    "pilav": 200,
+    "pirinc pilavi": 250,
+    "pirinç pilavı": 250,
+    "bulgur pilavi": 180,
+    "bulgur pilavı": 180,
+    "makarna": 200,
+    "corba": 80,
+    "çorba": 80,
+    "mercimek corbasi": 120,
+    "mercimek çorbası": 120,
+    "tarhana corbasi": 130,
+    "tarhana çorbası": 130,
+    "domates corbasi": 90,
+    "domates çorbası": 90,
+    "salata": 50,
+    "coban salata": 60,
+    "çoban salata": 60,
+    "elma": 52,
+    "muz": 89,
+    "portakal": 47,
+    "mandalina": 35,
+    "cilek": 32,
+    "çilek": 32,
+    "uzum": 67,
+    "üzüm": 67,
+    "karpuz": 30,
+    "kavun": 33,
+    "sut": 120,
+    "süt": 120,
+    "yoğurt": 100,
+    "yogurt": 100,
+    "ayran": 60,
+    "kahve": 2,
+    "turk kahvesi": 2,
+    "türk kahvesi": 2,
+    "cay": 1,
+    "çay": 1,
+    "su": 0,
+    "kebap": 400,
+    "adana kebap": 450,
+    "iskender": 650,
+    "lahmacun": 220,
+    "pide": 350,
+    "kofte": 200,
+    "köfte": 200,
+    "patates kizartmasi": 300,
+    "patates kızartması": 300,
+    "hamburger": 400,
+    "pizza": 500,
+    "balik": 180,
+    "balık": 180,
+    "somon": 200,
+    "ton baligi": 150,
+    "ton balığı": 150
+};
+
+function estimateCaloriesLocally(text) {
+    if (!text) return { name: "Bilinmeyen Öğün", kcal: 200 };
+    
+    const normalized = text.toLowerCase()
+        .replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g,"")
+        .replace(/\s+/g," ");
+        
+    let totalKcal = 0;
+    let foundItems = [];
+    
+    const sortedKeys = Object.keys(TURKISH_FOOD_CALORIES).sort((a, b) => b.length - a.length);
+    
+    let tempText = normalized;
+    sortedKeys.forEach(key => {
+        if (tempText.includes(key)) {
+            const regex = new RegExp(`(\\d+)?\\s*${key}`, 'g');
+            let match;
+            while ((match = regex.exec(normalized)) !== null) {
+                const multiplier = match[1] ? parseInt(match[1]) : 1;
+                totalKcal += TURKISH_FOOD_CALORIES[key] * multiplier;
+                foundItems.push(`${multiplier} x ${key}`);
+            }
+            tempText = tempText.replace(new RegExp(key, 'g'), '');
+        }
+    });
+    
+    if (totalKcal === 0) {
+        return { name: text.length > 30 ? text.substring(0, 30) + "..." : text, kcal: 250 };
+    }
+    
+    return {
+        name: foundItems.join(" + "),
+        kcal: totalKcal
+    };
+}
+
 // OpenRouter API
 const DEFAULT_OPENROUTER_API_KEY = atob("c2stb3ItdjEtN2I0NTg2ZTgzMzZiNzBkZjZmNjU2NTVmOGU3NWFhYmRhYmY5ZWE4OTc1ZDRkYWE4NGUyYjY4NTQxZjQzNGMyZg==");
-const OPENROUTER_MODEL = "google/gemini-2.5-flash";
+const OPENROUTER_MODELS = [
+    "google/gemini-2.5-flash:free",
+    "google/gemini-2.0-flash-exp:free",
+    "meta-llama/llama-3.2-11b-vision-instruct:free",
+    "qwen/qwen2.5-vl-72b-instruct:free",
+    "openrouter/free"
+];
 
 window.showManualFormOnError = (inputText, errorMsg) => {
     const responseTextEl = document.getElementById('ai-response-text');
@@ -2334,12 +2703,12 @@ window.submitErrorManualAdd = () => {
     const label = document.getElementById('error-manual-label').value.trim();
     const kcalVal = document.getElementById('error-manual-kcal').value.trim();
     if (!label) {
-        alert("Lütfen yiyecek adını girin.");
+        showToast("Lütfen yiyecek adını girin.", "warning");
         return;
     }
     const kcal = kcalVal ? parseInt(kcalVal) : 250;
     if (isNaN(kcal) || kcal < 0) {
-        alert("Lütfen geçerli bir kalori değeri girin.");
+        showToast("Lütfen geçerli bir kalori değeri girin.", "warning");
         return;
     }
     window.addToDailyIntake(kcal, label);
@@ -2350,7 +2719,7 @@ window.askAI = async () => {
     const apiKey = DEFAULT_OPENROUTER_API_KEY;
     
     if (!apiKey) {
-        alert('Lütfen geçerli bir OpenRouter API anahtarı ekleyin.');
+        showToast('Lütfen geçerli bir OpenRouter API anahtarı ekleyin.', 'error');
         return;
     }
 
@@ -2358,7 +2727,7 @@ window.askAI = async () => {
     const imageBase64 = window.currentAIImageBase64;
 
     if (!text && !imageBase64) {
-        alert('Lütfen bir yemek adı yazın veya fotoğraf ekleyin.');
+        showToast('Lütfen bir yemek adı yazın veya fotoğraf ekleyin.', 'warning');
         return;
     }
 
@@ -2372,7 +2741,7 @@ window.askAI = async () => {
     responseTextEl.classList.add('hidden');
     loadingTextEl.innerText = "Yapay Zeka Analiz Ediyor...";
 
-    const makeRequest = async (useImage) => {
+    const makeRequest = async (useImage, modelName) => {
         let systemPrompt = "Sen uzman bir diyetisyen yapay zekasısın. Görevin, kullanıcının yediği yemeği/içeceği analiz etmek. Eğer bir fotoğraf varsa onu tanı, yoksa metne odaklan. Tahmini kalorisini söyle ve diyete uygun olup olmadığını kısaca, samimi ve Türkçe bir şekilde anlat. (Maksimum 3-4 cümle) ÖNEMLİ: Cevabının en başına, tek satır olarak ve köşeli parantez içinde, yemeğin/içeceğin düzeltilmiş ve tam Türkçe adını ve yanına tek bir sayı olarak net tahmini kalorisini yaz (aralık belirtme, tek bir ortalama sayı yaz). Örnek: [Haşlanmış Yumurta - 75 kcal] veya [Mercimek Çorbası - 120 kcal]. Bu satırdan sonra açıklamana devam et.";
         
         let messages = [];
@@ -2400,7 +2769,7 @@ window.askAI = async () => {
             method: "POST",
             headers: headers,
             body: JSON.stringify({
-                model: OPENROUTER_MODEL,
+                model: modelName,
                 messages: messages,
                 temperature: 0.5,
                 max_tokens: 512
@@ -2415,25 +2784,105 @@ window.askAI = async () => {
         return await response.json();
     };
 
-    try {
-        let data;
-        let visualError = false;
+    // Try keyless Pollinations.ai API as a robust fallback
+    const makePollinationsRequest = async (useImage) => {
+        let systemPrompt = "Sen uzman bir diyetisyen yapay zekasısın. Görevin, kullanıcının yediği yemeği/içeceği analiz etmek. Eğer bir fotoğraf varsa onu tanı, yoksa metne odaklan. Tahmini kalorisini söyle ve diyete uygun olup olmadığını kısaca, samimi ve Türkçe bir şekilde anlat. (Maksimum 3-4 cümle) ÖNEMLİ: Cevabının en başına, tek satır olarak ve köşeli parantez içinde, yemeğin/içeceğin düzeltilmiş ve tam Türkçe adını ve yanına tek bir sayı olarak net tahmini kalorisini yaz (aralık belirtme, tek bir ortalama sayı yaz). Örnek: [Haşlanmış Yumurta - 75 kcal] veya [Mercimek Çorbası - 120 kcal]. Bu satırdan sonra açıklamana devam et.";
+        
+        let messages = [];
+        if (useImage && imageBase64) {
+            messages.push({
+                role: "user",
+                content: [
+                    { type: "text", text: systemPrompt + (text ? "\nKullanıcı notu: " + text : "\nLütfen bu fotoğrafı analiz et.") },
+                    { type: "image_url", image_url: { url: imageBase64 } }
+                ]
+            });
+        } else {
+            messages.push({ role: "system", content: systemPrompt });
+            messages.push({ role: "user", content: text });
+        }
 
-        if (imageBase64) {
+        const response = await fetch("https://text.pollinations.ai/", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                messages: messages,
+                model: "openai",
+                temperature: 0.5
+            })
+        });
+
+        if (!response.ok) {
+            throw new Error(`Pollinations HTTP ${response.status}`);
+        }
+
+        const aiText = await response.text();
+        return {
+            choices: [{
+                message: {
+                    content: aiText
+                }
+            }]
+        };
+    };
+
+    try {
+        let data = null;
+        let success = false;
+        let visualError = false;
+        let methodUsed = "OpenRouter";
+
+        // Step 1: Try OpenRouter with various free models
+        for (const model of OPENROUTER_MODELS) {
             try {
-                data = await makeRequest(true);
+                console.log(`Trying OpenRouter model: ${model}`);
+                data = await makeRequest(imageBase64 ? true : false, model);
+                success = true;
+                break;
             } catch (err) {
-                console.warn("Visual analysis failed, falling back to text-only:", err);
-                if (text) {
-                    visualError = true;
-                    loadingTextEl.innerText = "Görsel analizi yapılamadı. Sadece metin analiz ediliyor...";
-                    data = await makeRequest(false);
-                } else {
-                    throw err;
+                console.warn(`OpenRouter model ${model} failed:`, err);
+            }
+        }
+
+        // Step 2: If OpenRouter fails, try Pollinations.ai (totally keyless free endpoint)
+        if (!success) {
+            try {
+                console.log("OpenRouter failed completely. Falling back to Pollinations.ai...");
+                loadingTextEl.innerText = "Yedek sunucu üzerinden analiz ediliyor...";
+                data = await makePollinationsRequest(imageBase64 ? true : false);
+                success = true;
+                methodUsed = "Pollinations";
+            } catch (err) {
+                console.warn("Pollinations.ai failed:", err);
+                if (imageBase64 && text) {
+                    try {
+                        console.log("Trying text-only on Pollinations.ai...");
+                        data = await makePollinationsRequest(false);
+                        success = true;
+                        visualError = true;
+                        methodUsed = "Pollinations (Text Only)";
+                    } catch (textErr) {
+                        console.warn("Pollinations.ai text-only also failed:", textErr);
+                    }
                 }
             }
-        } else {
-            data = await makeRequest(false);
+        }
+
+        // Step 3: If AI API fails, use local dictionary database (instant offline fallback)
+        if (!success) {
+            console.log("All AI APIs failed. Falling back to local offline estimation database...");
+            loadingTextEl.innerText = "Yerel veritabanı ile tahmin ediliyor...";
+            const localResult = estimateCaloriesLocally(text);
+            data = {
+                choices: [{
+                    message: {
+                        content: `[${localResult.name} - ${localResult.kcal} kcal]\n\nİnternet bağlantısı veya sunucu hatası nedeniyle yerel veritabanı kullanıldı. Bu öğün tahmini olarak ${localResult.kcal} kalori içerir ve diyetinize otomatik olarak eklenmiştir.`
+                    }
+                }]
+            };
+            methodUsed = "Local Database Fallback";
         }
         
         loadingEl.classList.add('hidden');
@@ -2446,8 +2895,10 @@ window.askAI = async () => {
             let foodName = "AI Analizi";
             let kcal = 200;
 
-            const bracketMatch = aiText.match(/^\[(.+?)\]/);
+            const bracketMatch = aiText.match(/\[([^\]]+)\]/);
+            let matchedBracketText = "";
             if (bracketMatch) {
+                matchedBracketText = bracketMatch[0];
                 const content = bracketMatch[1].trim();
                 const lastHyphenIndex = content.lastIndexOf('-');
                 if (lastHyphenIndex !== -1) {
@@ -2502,12 +2953,47 @@ window.askAI = async () => {
                 }
             }
             
-            const cleanedHtml = formattedHtml.replace(/^\[.+?\]\s*<br>/i, '').replace(/^\[.+?\]\s*/i, '');
+            let cleanedHtml = formattedHtml;
+            if (matchedBracketText) {
+                const escapedBracket = matchedBracketText.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+                cleanedHtml = cleanedHtml.replace(new RegExp(escapedBracket + '\\s*<br>', 'i'), '')
+                                          .replace(new RegExp(escapedBracket + '\\s*', 'i'), '');
+            }
             const jsFoodName = foodName.replace(/['"‘“’`]/g, '');
+
+            // Check if auto-add is enabled
+            if (state.user.aiAutoAdd) {
+                state.daily.intake.push({ 
+                    kcal: parseInt(kcal), 
+                    label: foodName, 
+                    time: new Date().toLocaleTimeString('tr-TR', {hour:'2-digit', minute:'2-digit'}) 
+                });
+                storage.set('diyet_daily', state.daily);
+            }
 
             const fallbackNotice = visualError 
                 ? `<div style="background:rgba(255, 152, 0, 0.08); border: 1px solid rgba(255, 152, 0, 0.2); padding:8px 12px; border-radius:8px; font-size:11px; color:#e65100; margin-bottom:12px; display:flex; align-items:center; gap:5px;"><i class="ph ph-warning-circle"></i> Görsel analizi yapılamadı. Sadece metin analiz edildi.</div>` 
                 : '';
+
+            let actionHtml = '';
+            if (state.user.aiAutoAdd) {
+                actionHtml = `
+                    <div style="margin-top:15px; border-top:1px solid rgba(0,0,0,0.05); padding-top:10px; display:flex; align-items:center; gap:8px; color:#4caf50; font-weight:600; font-size:12.5px;">
+                        <i class="ph ph-check-circle" style="font-size:20px;"></i>
+                        <span>Günlüğünüze otomatik olarak eklendi! (+${kcal} kcal)</span>
+                    </div>
+                `;
+            } else {
+                actionHtml = `
+                    <div style="margin-top:15px; border-top:1px solid rgba(0,0,0,0.05); padding-top:10px; display:flex; align-items:center; gap:8px;">
+                        <button class="btn-primary-small" onclick="window.addAIMealToDiary('${kcal}', '${jsFoodName}', this)"
+                            style="background:#ab47bc; border:none; width:100%; justify-content:center; color:white; display:flex; align-items:center; gap:6px; height:38px; border-radius:10px; font-weight:600; font-size:13px; cursor:pointer;">
+                            <i class="ph ph-plus-circle" style="font-size:18px;"></i>
+                            <span>Günlüğüme Ekle (${kcal} kcal)</span>
+                        </button>
+                    </div>
+                `;
+            }
 
             responseTextEl.innerHTML = `
                 <div style="display:flex; gap:10px; align-items:flex-start;">
@@ -2516,14 +3002,17 @@ window.askAI = async () => {
                         ${fallbackNotice}
                         <div style="font-size:12px; font-weight:700; color:#ab47bc; margin-bottom:8px; letter-spacing:0.3px">📌 ${foodName}</div>
                         ${cleanedHtml}
-                        <div style="margin-top:15px; border-top:1px solid rgba(0,0,0,0.05); padding-top:10px">
-                            <button class="btn-primary-small" onclick="window.addToDailyIntake('${kcal}', '${jsFoodName}')"
-                                style="background:#ab47bc; border:none; width:100%; justify-content:center; color:white">
-                                <i class="ph ph-plus-circle"></i> Günlüğüme Ekle (${kcal} kcal)
-                            </button>
-                        </div>
+                        ${actionHtml}
                     </div>
                 </div>`;
+            
+            // Clean text field and preview
+            document.getElementById('ai-input-text').value = '';
+            window.clearAIImage();
+            
+            if (state.user.aiAutoAdd) {
+                showToast(`${foodName} (${kcal} kcal) günlüğünüze otomatik olarak eklendi.`, 'success');
+            }
         } else {
             responseTextEl.innerHTML = "Maalesef geçerli bir cevap oluşturulamadı.";
         }
@@ -2534,11 +3023,36 @@ window.askAI = async () => {
     }
 };
 
+window.addAIMealToDiary = (kcal, label, button) => {
+    state.daily.intake.push({ 
+        kcal: parseInt(kcal), 
+        label: label, 
+        time: new Date().toLocaleTimeString('tr-TR', {hour:'2-digit', minute:'2-digit'}) 
+    });
+    storage.set('diyet_daily', state.daily);
+    
+    // Change button container to green success checkmark
+    const parent = button.parentElement;
+    parent.innerHTML = `
+        <div style="display:flex; align-items:center; gap:8px; color:#4caf50; font-weight:600; font-size:13px;">
+            <i class="ph ph-check-circle" style="font-size:20px;"></i>
+            <span>Günlüğünüze başarıyla eklendi! (+${kcal} kcal)</span>
+        </div>
+    `;
+    
+    showToast(`${label} (${kcal} kcal) günlüğünüze eklendi.`, 'success');
+};
+
 // Service Worker
 function registerServiceWorker() {
     if ('serviceWorker' in navigator) {
         navigator.serviceWorker.register('sw.js')
-            .then(() => console.log('Service Worker Registered'))
+            .then(() => {
+                console.log('Service Worker Registered');
+                if (state.user.waterReminder) {
+                    WaterReminderManager.scheduleLocalAlarms();
+                }
+            })
             .catch(err => console.log('SW Registration Failed', err));
     }
 }
