@@ -642,6 +642,7 @@ const WaterReminderManager = {
                 await OneSignal.init({
                     appId: ONESIGNAL_APP_ID,
                     allowLocalhostAsSecureOrigin: true,
+                    serviceWorkerPath: "sw.js",
                     serviceWorkerParam: { scope: "/" }
                 });
                 console.log("OneSignal Web Push başarıyla başlatıldı.");
@@ -802,7 +803,7 @@ const WaterReminderManager = {
     // Öğün saatleri gelince bildirim tetikleme kontrolü
     checkAndSendMealReminders: () => {
         if (!state.user.waterReminder) return;
-        if (Notification.permission !== 'granted') return;
+        if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
 
         const now = new Date();
         const currentHour = now.getHours();
@@ -836,7 +837,7 @@ const WaterReminderManager = {
     // Günlük yürüyüş ve spor bildirimini tetikleme kontrolü (Saat 12:30'da)
     checkAndSendWalkReminder: () => {
         if (!state.user.waterReminder) return;
-        if (Notification.permission !== 'granted') return;
+        if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
 
         const now = new Date();
         const currentHour = now.getHours();
@@ -866,7 +867,7 @@ const WaterReminderManager = {
         WaterReminderManager.checkAndSendWalkReminder();
 
         if (!state.user.waterReminder) return;
-        if (Notification.permission !== 'granted') return;
+        if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
 
         const now = new Date();
         const currentHour = now.getHours();
@@ -915,7 +916,7 @@ const WaterReminderManager = {
                 }
             });
 
-            if (!state.user.waterReminder || Notification.permission !== 'granted') {
+            if (!state.user.waterReminder || typeof Notification === 'undefined' || Notification.permission !== 'granted') {
                 console.log("Hatırlatıcı kapalı veya izin verilmemiş. Eski bildirimler temizlendi.");
                 return;
             }
@@ -1015,6 +1016,16 @@ const WaterReminderManager = {
 
 window.handleWaterReminderToggle = async (checkbox) => {
     if (checkbox.checked) {
+        if (isIOS && !isStandalone) {
+            checkbox.checked = false;
+            window.showIOSInstallGuide();
+            return;
+        }
+        if (typeof Notification === 'undefined') {
+            showToast("Maalesef tarayıcınız anlık bildirimleri desteklemiyor. iOS kullanıyorsanız uygulamayı ana ekrana eklemelisiniz.", "error");
+            checkbox.checked = false;
+            return;
+        }
         const permission = await Notification.requestPermission();
         if (permission === 'granted') {
             state.user.waterReminder = true;
@@ -1161,6 +1172,7 @@ function showIOSInstallGuide() {
     `;
     modalContainer.classList.remove('hidden');
 }
+window.showIOSInstallGuide = showIOSInstallGuide;
 
 function showInfo() {
     modalBody.innerHTML = `
@@ -1519,6 +1531,71 @@ function renderDashboard() {
     const netBalance = totalBurned - totalIntake;
     const estimatedLoss = (netBalance / 7700 * 1000).toFixed(0); // 7700 cal ≈ 1kg loss
 
+    // iOS için özel yükleme ve bildirim banner'ı
+    const iosBannerDismissed = storage.get('ios_install_banner_dismissed', false);
+    const showIOSBanner = isIOS && !isStandalone && !iosBannerDismissed;
+
+    const iosBannerHTML = showIOSBanner ? `
+        <div id="ios-install-banner" style="
+            background: linear-gradient(135deg, #ff9800, #f57c00);
+            color: white;
+            padding: 16px;
+            border-radius: 16px;
+            margin-bottom: 14px;
+            box-shadow: 0 4px 20px rgba(245,124,0,0.3);
+            position: relative;
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+        ">
+            <div style="font-size:32px; flex-shrink:0; margin-top: 2px;">📱</div>
+            <div style="flex:1; min-width:0">
+                <div style="font-weight:700; font-size:15px; margin-bottom:4px; display:flex; align-items:center; gap:6px;">
+                    <span>iOS Bildirim & Yükleme Rehberi</span>
+                    <span style="background:rgba(255,255,255,0.25); font-size:10px; padding:2px 6px; border-radius:8px; font-weight:600;">Gerekli</span>
+                </div>
+                <div style="font-size:12.5px; opacity:0.95; line-height:1.5; margin-bottom:12px;">
+                    Apple kuralları gereği, arka planda su/öğün hatırlatmaları alabilmek için uygulamayı <strong>Ana Ekrana Eklemeniz</strong> gerekmektedir.
+                </div>
+                <div style="display: flex; gap: 10px;">
+                    <button onclick="window.showIOSInstallGuide()" style="
+                        background: white;
+                        border: none;
+                        color: #e65100;
+                        padding: 8px 14px;
+                        border-radius: 10px;
+                        font-size: 12px;
+                        font-weight: 700;
+                        cursor: pointer;
+                        display: flex;
+                        align-items: center;
+                        gap: 5px;
+                        box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+                    ">
+                        <i class="ph ph-plus-square"></i> Nasıl Yüklenir?
+                    </button>
+                </div>
+            </div>
+            <button id="ios-banner-close" style="
+                background: rgba(255,255,255,0.2);
+                border: none;
+                color: white;
+                width: 26px;
+                height: 26px;
+                border-radius: 50%;
+                font-size: 14px;
+                cursor: pointer;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                position: absolute;
+                top: 10px;
+                right: 10px;
+                font-weight: bold;
+            " title="Kapat">×</button>
+        </div>
+    ` : '';
+
     // Bildirim izin banner'ı (izin verilmemişse ve kullanıcı kapatmadıysa göster)
     const notifBannerDismissed = storage.get('notif_banner_dismissed', false);
     const showNotifBanner = ('Notification' in window)
@@ -1564,6 +1641,7 @@ function renderDashboard() {
     ` : '';
 
     const dashboardHTML = `
+        ${iosBannerHTML}
         ${notifBannerHTML}
         <div class="dashboard-top-section">
             <div class="card water-card-horizontal">
@@ -1755,6 +1833,21 @@ function renderDashboard() {
                     const toggleEl = document.getElementById('water-reminder-toggle');
                     if (toggleEl) toggleEl.checked = true;
                 }
+            }
+        });
+    }
+
+    // iOS banner event listeners
+    const iosBannerEl = document.getElementById('ios-install-banner');
+    if (iosBannerEl) {
+        iosBannerEl.addEventListener('click', (e) => {
+            // × butonuna tıklandıysa sadece kapat
+            if (e.target.id === 'ios-banner-close' || e.target.closest('#ios-banner-close')) {
+                storage.set('ios_install_banner_dismissed', true);
+                iosBannerEl.style.opacity = '0';
+                iosBannerEl.style.transform = 'translateY(-10px)';
+                iosBannerEl.style.transition = 'opacity 0.3s, transform 0.3s';
+                setTimeout(() => iosBannerEl.remove(), 300);
             }
         });
     }
@@ -2184,6 +2277,34 @@ function renderProfile() {
                     <span>Tarayıcınızda bildirim izinleri engellenmiş! Hatırlatıcıları almak için adres çubuğundaki kilit simgesinden izin verin.</span>
                 </div>
             ` : ''}
+
+            <!-- iOS Bildirim Uyarısı -->
+            ${/iPad|iPhone|iPod/.test(navigator.userAgent) ? `
+                <div style="background:rgba(255,152,0,0.08); border:1px solid rgba(255,152,0,0.25); border-radius:12px; padding:13px; margin-top:15px;">
+                    <div style="display:flex; align-items:flex-start; gap:10px;">
+                        <div style="font-size:22px; flex-shrink:0;">🍎</div>
+                        <div>
+                            <div style="font-size:13px; font-weight:700; color:#e65100; margin-bottom:6px;">iOS Bildirim & Arka Plan Notu</div>
+                            <div style="font-size:12px; color:var(--text-color); line-height:1.6; margin-bottom: 8px;">
+                                iOS 16.4+ ile birlikte Apple, **Ana Ekrana Eklenen** web uygulamalarına tam arka plan bildirim desteği sunmaktadır. Normal Safari sekmesinde kullanırken bildirimler etkinleştirilemez.
+                            </div>
+                            <div style="background:rgba(255,152,0,0.1); border-radius:10px; padding:10px;">
+                                <div style="font-size:12px; font-weight:700; color:#bf360c; margin-bottom:6px;">✅ Adım Adım Bildirimleri Açma:</div>
+                                <div style="font-size:11.5px; color:var(--text-color); line-height:1.6;">
+                                    1️⃣ Safari tarayıcısında bu sayfayı açın.<br>
+                                    2️⃣ Safari'nin altındaki <strong>Paylaş</strong> (<i class="ph ph-export"></i>) butonuna dokunun.<br>
+                                    3️⃣ Menüyü aşağı kaydırıp <strong>"Ana Ekrana Ekle"</strong> seçeneğini seçin.<br>
+                                    4️⃣ Ana ekranınıza gelen <strong>Diyetim</strong> uygulamasını açın.<br>
+                                    5️⃣ Profil sekmesinden <strong>Saatlik Su Hatırlatıcısını</strong> açıp bildirim iznini onaylayın.
+                                </div>
+                            </div>
+                            <div style="font-size:11px; color:var(--text-light); margin-top:8px;">
+                                💡 Bu kurulumu yaptıktan sonra, uygulama kapalıyken bile OneSignal üzerinden hatırlatıcı ve motive edici bildirimleri sorunsuzca alacaksınız.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            ` : ''}
         </div>
 
         <!-- Yapay Zeka Ayarları Kartı -->
@@ -2455,7 +2576,83 @@ function getBMICategory() {
 
 // --- AI Assistant ---
 function renderAIAssistant() {
+    const hasGeminiKey = !!(state.user.geminiApiKey && state.user.geminiApiKey.trim());
+    const hasORKey = !!(state.user.openRouterApiKey && state.user.openRouterApiKey.trim());
+    const hasAnyKey = hasGeminiKey || hasORKey;
+
     mainContent.innerHTML = `
+        <!-- Ücretsiz API Key Rehberi (key yoksa göster) -->
+        ${!hasAnyKey ? `
+        <div style="
+            background: linear-gradient(135deg, #4285f4 0%, #34a853 100%);
+            color: white;
+            padding: 16px;
+            border-radius: 18px;
+            margin-bottom: 15px;
+            box-shadow: 0 4px 20px rgba(66,133,244,0.3);
+        ">
+            <div style="display:flex; align-items:center; gap:10px; margin-bottom:12px;">
+                <div style="font-size:28px;">✨</div>
+                <div>
+                    <div style="font-weight:700; font-size:14px;">Daha İyi AI Analizi İçin Ücretsiz Key Al!</div>
+                    <div style="font-size:11px; opacity:0.9;">Şu an ücretsiz sunucu kullanılıyor (yavaş olabilir)</div>
+                </div>
+            </div>
+            <div style="background:rgba(255,255,255,0.15); border-radius:12px; padding:12px; margin-bottom:12px;">
+                <p style="font-size:12px; font-weight:700; margin-bottom:8px;">🔑 Gemini API Key Nasıl Alınır? (2 Dakika)</p>
+                <div style="font-size:11.5px; line-height:1.7; opacity:0.95;">
+                    <div>1️⃣ Aşağıdaki butona tıkla → Google hesabınla giriş yap</div>
+                    <div>2️⃣ <strong>"Create API Key"</strong> butonuna tıkla</div>
+                    <div>3️⃣ Çıkan kodu kopyala</div>
+                    <div>4️⃣ <strong>Profil → Yapay Zeka Ayarları</strong>'na yapıştır → Kaydet</div>
+                </div>
+            </div>
+            <div style="display:flex; gap:8px;">
+                <a href="https://aistudio.google.com/apikey" target="_blank" style="
+                    background: white;
+                    color: #4285f4;
+                    border-radius: 10px;
+                    padding: 10px 14px;
+                    font-size: 12.5px;
+                    font-weight: 700;
+                    text-decoration: none;
+                    display: flex;
+                    align-items: center;
+                    gap: 6px;
+                    flex: 1;
+                    justify-content: center;
+                ">
+                    <i class="ph ph-google-logo"></i> Ücretsiz Key Al
+                </a>
+                <button onclick="window.switchTab('profile')" style="
+                    background: rgba(255,255,255,0.2);
+                    color: white;
+                    border: 1.5px solid rgba(255,255,255,0.4);
+                    border-radius: 10px;
+                    padding: 10px 14px;
+                    font-size: 12px;
+                    font-weight: 600;
+                    cursor: pointer;
+                    display: flex;
+                    align-items: center;
+                    gap: 5px;
+                    flex: 1;
+                    justify-content: center;
+                ">
+                    <i class="ph ph-gear"></i> Key Gir
+                </button>
+            </div>
+        </div>
+        ` : `
+        <div style="background:rgba(52,168,83,0.1); border:1px solid rgba(52,168,83,0.25); border-radius:14px; padding:12px 14px; margin-bottom:15px; display:flex; align-items:center; gap:10px;">
+            <i class="ph ph-check-circle" style="color:#34a853; font-size:22px; flex-shrink:0;"></i>
+            <div>
+                <div style="font-size:13px; font-weight:700; color:#34a853;">API Key Aktif ✓</div>
+                <div style="font-size:11px; color:var(--text-light);">Premium AI analizi kullanıyorsunuz</div>
+            </div>
+        </div>
+        `}
+
         <div class="card" style="margin-bottom: 15px;">
             <div class="card-header-main" style="margin-bottom: 10px;">
                 <h2 style="font-size:18px; font-weight:600; margin-bottom:0; display:flex; align-items:center; gap:8px">
@@ -2896,24 +3093,42 @@ const makePollinationsRequest = async (text, imageBase64) => {
         messages.push({ role: 'user', content: text });
     }
     
-    // Resimli istek için openai-vision modeli dene
-    const model = imageBase64 ? 'openai' : 'openai';
-    
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 20000);
+    const timeout = setTimeout(() => controller.abort(), 25000);
     
     try {
-        const response = await fetch('https://text.pollinations.ai/', {
+        // Yeni Pollinations v2 API endpoint'i
+        const response = await fetch('https://text.pollinations.ai/openai', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ messages, model, temperature: 0.5, seed: Math.floor(Math.random() * 9999) }),
+            headers: { 
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+            },
+            body: JSON.stringify({ 
+                model: imageBase64 ? 'openai-large' : 'openai',
+                messages, 
+                temperature: 0.5,
+                max_tokens: 512
+            }),
             signal: controller.signal
         });
         clearTimeout(timeout);
         
-        if (!response.ok) throw new Error(`Pollinations HTTP ${response.status}`);
+        if (!response.ok) {
+            const errBody = await response.text().catch(() => '');
+            throw new Error(`Pollinations HTTP ${response.status}: ${errBody.substring(0, 100)}`);
+        }
         
-        const aiText = await response.text();
+        // Try JSON first (OpenAI-compatible format)
+        const contentType = response.headers.get('content-type') || '';
+        let aiText;
+        if (contentType.includes('application/json')) {
+            const json = await response.json();
+            aiText = json?.choices?.[0]?.message?.content || json?.content || JSON.stringify(json);
+        } else {
+            aiText = await response.text();
+        }
+        
         if (!aiText || aiText.trim().length < 10) throw new Error('Pollinations boş yanıt');
         return { choices: [{ message: { content: aiText } }] };
     } catch(e) {
