@@ -1071,7 +1071,7 @@ window.handleWaterReminderToggle = async (checkbox) => {
 
 function init() {
     // Versiyon Kontrolü (Zorunlu Güncelleme)
-    const CURRENT_VERSION = "3.1";
+    const CURRENT_VERSION = "3.2";
     if (storage.get('app_version') !== CURRENT_VERSION) {
         storage.set('app_version', CURRENT_VERSION);
         if ('serviceWorker' in navigator) {
@@ -3161,6 +3161,7 @@ window.askAI = async () => {
         let success = false;
         let visualError = false;
         let methodUsed = 'Yerel';
+        const errors = [];
 
         // KAT 1: Gemini API (kullanıcı key girdiyse - en stabil, ücretsiz)
         if (!success && state.user.geminiApiKey) {
@@ -3172,6 +3173,7 @@ window.askAI = async () => {
                 methodUsed = 'Gemini';
             } catch (err) {
                 console.warn('Gemini failed:', err.message);
+                errors.push(`Gemini: ${err.message}`);
             }
         }
 
@@ -3187,6 +3189,7 @@ window.askAI = async () => {
                     break;
                 } catch (err) {
                     console.warn(`OpenRouter ${model} failed:`, err.message);
+                    errors.push(`OpenRouter (${model}): ${err.message}`);
                 }
             }
         }
@@ -3201,6 +3204,7 @@ window.askAI = async () => {
                 methodUsed = 'Pollinations';
             } catch (err) {
                 console.warn('Pollinations failed:', err.message);
+                errors.push(`Pollinations: ${err.message}`);
                 // Resimli istek başarısızsa sadece metinle dene
                 if (imageBase64 && text) {
                     try {
@@ -3211,6 +3215,7 @@ window.askAI = async () => {
                         methodUsed = 'Pollinations (Metin)';
                     } catch (textErr) {
                         console.warn('Pollinations text-only also failed:', textErr.message);
+                        errors.push(`Pollinations (Sadece Metin): ${textErr.message}`);
                     }
                 }
             }
@@ -3221,10 +3226,11 @@ window.askAI = async () => {
             console.log('Tüm AI servisleri başarısız. Yerel veritabanı kullanılıyor...');
             loadingTextEl.innerText = 'Yerel veritabanı ile tahmin ediliyor...';
             const localResult = estimateCaloriesLocally(text);
+            const errorDetails = errors.map(e => `• ${e}`).join('<br>');
             data = {
                 choices: [{
                     message: {
-                        content: `[${localResult.name} - ${localResult.kcal} kcal]\n\n📴 İnternet bağlantısı olmadığından veya sunucu meşgul olduğundan, yerleşik Türk yemekleri veritabanı kullanıldı. Tahmini kalori: **${localResult.kcal} kcal**. Dilediğiniz kadar düzenleyebilirsiniz.`
+                        content: `[${localResult.name} - ${localResult.kcal} kcal]\n\n📴 İnternet bağlantısı olmadığından veya sunucu meşgul olduğundan, yerleşik Türk yemekleri veritabanı kullanıldı. Tahmini kalori: **${localResult.kcal} kcal**. Dilediğiniz kadar düzenleyebilirsiniz.\n\n<details style="margin-top:10px; font-size:11px; color:var(--text-light); cursor:pointer;"><summary>Hata Detayları (Teknik Destek İçin)</summary><div style="margin-top:5px; background:rgba(0,0,0,0.03); padding:8px; border-radius:6px; font-family:monospace; line-height:1.4; text-align:left;">${errorDetails}</div></details>`
                     }
                 }]
             };
