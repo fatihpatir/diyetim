@@ -1071,7 +1071,7 @@ window.handleWaterReminderToggle = async (checkbox) => {
 
 function init() {
     // Versiyon Kontrolü (Zorunlu Güncelleme)
-    const CURRENT_VERSION = "3.0";
+    const CURRENT_VERSION = "3.1";
     if (storage.get('app_version') !== CURRENT_VERSION) {
         storage.set('app_version', CURRENT_VERSION);
         if ('serviceWorker' in navigator) {
