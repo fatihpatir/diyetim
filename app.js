@@ -1071,7 +1071,7 @@ window.handleWaterReminderToggle = async (checkbox) => {
 
 function init() {
     // Versiyon Kontrolü (Zorunlu Güncelleme)
-    const CURRENT_VERSION = "3.2";
+    const CURRENT_VERSION = "3.3";
     if (storage.get('app_version') !== CURRENT_VERSION) {
         storage.set('app_version', CURRENT_VERSION);
         if ('serviceWorker' in navigator) {
@@ -2945,9 +2945,9 @@ function estimateCaloriesLocally(text) {
 // ─── AI Servis Katmanı ──────────────────────────────────────────────────────
 // Konfigürasyon
 const OPENROUTER_MODELS = [
-    "google/gemini-2.0-flash-exp:free",
-    "meta-llama/llama-3.2-11b-vision-instruct:free",
-    "qwen/qwen2.5-vl-72b-instruct:free",
+    "openrouter/free",
+    "google/gemini-2.0-flash-lite-preview-02-05:free",
+    "meta-llama/llama-3.3-70b-instruct:free"
 ];
 
 // AI Sistem Prompu
@@ -3004,40 +3004,49 @@ const makeGeminiRequest = async (text, imageBase64) => {
     const apiKey = state.user.geminiApiKey || '';
     if (!apiKey) throw new Error('Gemini API key yok');
     
-    const model = imageBase64 ? 'gemini-2.0-flash' : 'gemini-2.0-flash';
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+    const models = ['gemini-2.0-flash', 'gemini-1.5-flash'];
+    let lastError;
     
-    const parts = [];
-    if (imageBase64) {
-        const mimeMatch = imageBase64.match(/^data:([^;]+);base64,/);
-        const mimeType = mimeMatch ? mimeMatch[1] : 'image/jpeg';
-        const base64Data = imageBase64.replace(/^data:[^;]+;base64,/, '');
-        parts.push({ inlineData: { mimeType, data: base64Data } });
-        if (text) parts.push({ text: `Kullanıcı notu: ${text}` });
-        else parts.push({ text: 'Lütfen bu fotoğraftaki yemeği analiz et.' });
-    } else {
-        parts.push({ text });
+    for (const model of models) {
+        try {
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+            const parts = [];
+            if (imageBase64) {
+                const mimeMatch = imageBase64.match(/^data:([^;]+);base64,/);
+                const mimeType = mimeMatch ? mimeMatch[1] : 'image/jpeg';
+                const base64Data = imageBase64.replace(/^data:[^;]+;base64,/, '');
+                parts.push({ inlineData: { mimeType, data: base64Data } });
+                if (text) parts.push({ text: `Kullanıcı notu: ${text}` });
+                else parts.push({ text: 'Lütfen bu fotoğraftaki yemeği analiz et.' });
+            } else {
+                parts.push({ text });
+            }
+            
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    systemInstruction: { parts: [{ text: AI_SYSTEM_PROMPT }] },
+                    contents: [{ role: 'user', parts }],
+                    generationConfig: { temperature: 0.4, maxOutputTokens: 512 }
+                })
+            });
+            
+            if (!response.ok) {
+                const err = await response.json().catch(() => ({}));
+                throw new Error(err.error?.message || `Gemini HTTP ${response.status}`);
+            }
+            
+            const data = await response.json();
+            const aiText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+            if (!aiText) throw new Error('Gemini boş yanıt döndü');
+            return { choices: [{ message: { content: aiText } }] };
+        } catch (e) {
+            console.warn(`Gemini model ${model} failed:`, e.message);
+            lastError = e;
+        }
     }
-    
-    const response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            systemInstruction: { parts: [{ text: AI_SYSTEM_PROMPT }] },
-            contents: [{ role: 'user', parts }],
-            generationConfig: { temperature: 0.4, maxOutputTokens: 512 }
-        })
-    });
-    
-    if (!response.ok) {
-        const err = await response.json().catch(() => ({}));
-        throw new Error(err.error?.message || `Gemini HTTP ${response.status}`);
-    }
-    
-    const data = await response.json();
-    const aiText = data.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!aiText) throw new Error('Gemini boş yanıt döndü');
-    return { choices: [{ message: { content: aiText } }] };
+    throw lastError;
 };
 
 // ─── OpenRouter API (Ücretsiz modeller) ────────────────────────────────────
